@@ -41,6 +41,7 @@ class AnkiClient:
         """Synchronous. Call via run_in_executor. ease: 1=Again, 2=Hard, 3=Good, 4=Easy."""
         with self._get_collection() as col:
             card = col.get_card(card_id)
+            card.start_timer()
             col.sched.answerCard(card, ease)
 
     def get_due_count(self) -> int:
