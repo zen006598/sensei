@@ -1,0 +1,17 @@
+services:
+  sensei:
+    build: .
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - ANKIWEB_EMAIL=${ANKIWEB_EMAIL}
+      - ANKIWEB_PASSWORD=${ANKIWEB_PASSWORD}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANKI_COLLECTION_PATH=/data/anki/collection.anki2
+      - SCHEDULER_DAILY_HOUR=8
+      - MAX_CARDS_PER_SESSION=20
+      - GEMINI_TIMEOUT=30
+    volumes:
+      - type: bind
+        source: ${ANKI_DATA_PATH:-./data/anki}
+        target: /data/anki

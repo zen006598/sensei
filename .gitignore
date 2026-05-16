@@ -8,3 +8,13 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+
+# Anki data files
+data/anki/*.anki2
+data/anki/*.anki2-journal
+
+# Ruff cache
+.ruff_cache/
