@@ -21,10 +21,19 @@ class AnkiClient:
         finally:
             col.close()
 
-    def get_due_cards(self, limit: int = 20) -> list[CardData]:
+    def get_deck_names(self) -> list[str]:
         """Synchronous. Call via run_in_executor."""
         with self._get_collection() as col:
-            card_ids = col.find_cards("is:due")[:limit]
+            return sorted(d["name"] for d in col.decks.all())
+
+    def get_due_cards(self, limit: int = 20, deck: str | None = None) -> list[CardData]:
+        """Synchronous. Call via run_in_executor."""
+        with self._get_collection() as col:
+            if deck:
+                query = f'deck:"{deck}" (is:due OR is:new)'
+            else:
+                query = "is:due"
+            card_ids = col.find_cards(query)[:limit]
             cards = [self._card_to_data(col, cid) for cid in card_ids]
             return [c for c in cards if c.front or c.back]
 
