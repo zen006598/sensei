@@ -28,3 +28,11 @@ def session_summary_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("☁ Sync Now", callback_data="sync"),
         ]
     ])
+
+
+def deck_list_keyboard(deck_names: list[str]) -> InlineKeyboardMarkup:
+    """One button per deck + 'All decks' at top. Capped at 8 decks."""
+    rows = [[InlineKeyboardButton("📚 All decks", callback_data="deck_select:")]]
+    for name in deck_names[:8]:
+        rows.append([InlineKeyboardButton(name, callback_data=f"deck_select:{name}")])
+    return InlineKeyboardMarkup(rows)
