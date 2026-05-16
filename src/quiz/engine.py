@@ -3,6 +3,7 @@ import random
 
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
+from src.db.prefs import UserPrefsStore
 from src.gemini.client import GeminiClient
 from src.quiz.models import (
     AnswerResult,
@@ -21,17 +22,20 @@ class QuizEngine:
         anki_syncer: AnkiSyncer,
         gemini_client: GeminiClient,
         scorer: Scorer,
+        prefs_store: UserPrefsStore,
     ):
         self._anki = anki_client
         self._syncer = anki_syncer
         self._gemini = gemini_client
         self._scorer = scorer
+        self._prefs = prefs_store
         self._sessions: dict[int, QuizSession] = {}
 
     async def start_session(self, user_id: int, max_cards: int) -> QuizSession:
-        """Sync from AnkiWeb, fetch due cards, init session."""
+        """Sync from AnkiWeb, fetch due cards for the user's selected deck, init session."""
         await self._syncer.async_sync()
-        cards = await self._run_anki(self._anki.get_due_cards, max_cards)
+        deck = self._prefs.get_deck(user_id)
+        cards = await self._run_anki(self._anki.get_due_cards, max_cards, deck)
         session = QuizSession(
             user_id=user_id,
             pending_cards=cards,
@@ -93,6 +97,15 @@ class QuizEngine:
     def get_due_count_sync(self) -> int:
         """For notification jobs — returns due count synchronously."""
         return self._anki.get_due_count()
+
+    async def get_deck_names(self) -> list[str]:
+        return await self._run_anki(self._anki.get_deck_names)
+
+    def set_deck(self, user_id: int, deck_name: str | None) -> None:
+        self._prefs.set_deck(user_id, deck_name)
+
+    def get_deck(self, user_id: int) -> str | None:
+        return self._prefs.get_deck(user_id)
 
     async def _run_anki(self, fn, *args):
         """Acquire collection lock, run synchronous anki fn in executor."""
