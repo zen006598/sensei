@@ -11,7 +11,7 @@ class GeminiError(Exception):
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash", timeout: int = 30):
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite", timeout: int = 30):
         self._client = genai.Client(api_key=api_key)
         self._model = model
         self._config = types.GenerateContentConfig(

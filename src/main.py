@@ -31,6 +31,7 @@ def main() -> None:
     )
     gemini_client = GeminiClient(
         api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
         timeout=settings.gemini_timeout_seconds,
     )
     scorer = Scorer(gemini_client)
