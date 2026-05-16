@@ -2,7 +2,12 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.anki.sync import AnkiSyncer
-from src.bot.keyboards import after_answer_keyboard, question_keyboard, session_summary_keyboard
+from src.bot.keyboards import (
+    after_answer_keyboard,
+    deck_list_keyboard,
+    question_keyboard,
+    session_summary_keyboard,
+)
 from src.quiz.engine import QuizEngine
 from src.quiz.models import SessionSummary
 
@@ -15,6 +20,7 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
             "👋 Welcome to Sensei!\n\n"
             "Commands:\n"
             "/quiz — Start a review session\n"
+            "/decks — Choose which deck to study\n"
             "/status — Check how many cards are due\n"
             "/stop — End current session\n"
         )
@@ -106,6 +112,21 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         summary = await engine.end_session(user_id)
         await update.message.reply_text(_format_summary(summary), reply_markup=session_summary_keyboard())
 
+    async def decks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        deck_names = await engine.get_deck_names()
+        current = engine.get_deck(update.effective_user.id)
+        header = f"📂 Select a deck to study\nCurrent: {current or 'All decks'}"
+        await update.message.reply_text(header, reply_markup=deck_list_keyboard(deck_names))
+
+    async def deck_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        query = update.callback_query
+        await query.answer()
+        user_id = update.effective_user.id
+        deck_name = query.data.removeprefix("deck_select:") or None
+        engine.set_deck(user_id, deck_name)
+        label = deck_name if deck_name else "All decks"
+        await query.edit_message_text(f"✅ Deck set to: {label}\nUse /quiz to start reviewing.")
+
     async def send_due_notification(context: ContextTypes.DEFAULT_TYPE) -> None:
         count = engine.get_due_count_sync()
         if count > 0:
@@ -119,6 +140,8 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         "quiz": quiz_command,
         "stop": stop_command,
         "status": status_command,
+        "decks": decks_command,
+        "deck_select": deck_select_callback,
         "handle_answer": handle_answer,
         "skip": skip_callback,
         "hint": hint_callback,
