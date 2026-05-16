@@ -1,5 +1,9 @@
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
+
+logger = logging.getLogger(__name__)
 
 from src.anki.sync import AnkiSyncer
 from src.bot.keyboards import (
@@ -135,6 +139,13 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
                 text=f"📚 You have {count} card(s) due for review. Use /quiz to start!",
             )
 
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.error("Unhandled exception", exc_info=context.error)
+        if isinstance(update, Update) and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️ 系統發生錯誤，請稍後再試。"
+            )
+
     return {
         "start": start_command,
         "quiz": quiz_command,
@@ -150,6 +161,7 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         "new_session": new_session_callback,
         "sync": sync_callback,
         "send_due_notification": send_due_notification,
+        "error": error_handler,
     }
 
 

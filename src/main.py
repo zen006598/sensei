@@ -56,6 +56,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handlers["sync"], pattern="^sync$"))
     app.add_handler(CallbackQueryHandler(handlers["deck_select"], pattern=r"^deck_select:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers["handle_answer"]))
+    app.add_error_handler(handlers["error"])
 
     # TODO: wire daily due-card notification via app.job_queue.run_daily once
     # TELEGRAM_CHAT_ID is added to Settings (needed as job chat_id target).
