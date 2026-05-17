@@ -43,7 +43,7 @@ def main() -> None:
         anki_client, anki_syncer, agent, prefs_store, db_engine
     )
 
-    handlers = make_handlers(state_machine, anki_syncer)
+    handlers = make_handlers(state_machine, anki_syncer, settings.allowed_user_ids)
 
     app = Application.builder().token(settings.telegram_token).build()
 

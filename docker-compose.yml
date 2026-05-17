@@ -11,6 +11,7 @@ services:
       - SCHEDULER_DAILY_HOUR=8
       - MAX_CARDS_PER_SESSION=20
       - GEMINI_TIMEOUT=30
+      - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
     volumes:
       - type: bind
         source: ${ANKI_DATA_PATH:-./data/anki}

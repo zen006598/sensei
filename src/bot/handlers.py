@@ -25,7 +25,17 @@ _OUTCOME_LABEL = {
 }
 
 
-def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
+def make_handlers(
+    sm: QuizStateMachine, syncer: AnkiSyncer, allowed_user_ids: set[int] = frozenset()
+) -> dict:
+
+    def _is_allowed(update: Update) -> bool:
+        if not allowed_user_ids:
+            return True
+        return (
+            update.effective_user is not None
+            and update.effective_user.id in allowed_user_ids
+        )
 
     _HELP_TEXT = (
         "Commands:\n"
@@ -39,21 +49,29 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
     )
 
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         await update.message.reply_text(
             f"Welcome to Sensei!\n\n{_HELP_TEXT}",
             reply_markup=main_keyboard(),
         )
 
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         await update.message.reply_text(_HELP_TEXT, reply_markup=main_keyboard())
 
     async def status_command(
         update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
+        if not _is_allowed(update):
+            return
         count = sm.get_due_count_sync()
         await update.message.reply_text(f"{count} card(s) due for review.")
 
     async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         user_id = update.effective_user.id
         if sm.has_active_session():
             await update.message.reply_text(
@@ -68,6 +86,8 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await _send_question(update, question)
 
     async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         if not sm.has_active_session():
             return
         result = await sm.submit_answer(update.message.text)
@@ -173,6 +193,8 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.answer(hint_text, show_alert=True)
 
     async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         if not sm.has_active_session():
             await update.message.reply_text("No active session.")
             return
@@ -183,6 +205,8 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         )
 
     async def decks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         deck_names = await sm.get_deck_names()
         user_id = update.effective_user.id
         current = sm.get_deck(user_id)
@@ -203,6 +227,8 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.edit_message_text(f"Deck set to: {label}\nUse /quiz to start.")
 
     async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         user_id = update.effective_user.id
         current = sm.get_mode(user_id)
         await update.message.reply_text(
@@ -230,6 +256,8 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.edit_message_text("Use /quiz to start a new session.")
 
     async def sync_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not _is_allowed(update):
+            return
         msg = await update.message.reply_text("Syncing ...")
         result = await syncer.async_sync()
         due = sm.get_due_count_sync()

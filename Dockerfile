@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -16,6 +16,10 @@ RUN uv sync --frozen --no-dev
 
 COPY src/ ./src/
 
-RUN mkdir -p /data/anki
+RUN mkdir -p /data/anki && \
+    groupadd -r sensei && useradd -r -g sensei sensei && \
+    chown -R sensei:sensei /app /data
+
+USER sensei
 
 CMD ["uv", "run", "python", "-m", "src.main"]

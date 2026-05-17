@@ -18,6 +18,7 @@ class Settings:
     gemini_timeout_seconds: int
     scheduler_daily_hour: int
     max_cards_per_session: int
+    allowed_user_ids: set[int]
 
 
 def load_settings() -> Settings:
@@ -47,4 +48,9 @@ def load_settings() -> Settings:
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
         scheduler_daily_hour=int(os.environ.get("SCHEDULER_DAILY_HOUR", "8")),
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
+        allowed_user_ids={
+            int(uid)
+            for uid in os.environ.get("ALLOWED_USER_IDS", "").split(",")
+            if uid.strip()
+        },
     )
