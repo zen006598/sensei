@@ -60,11 +60,11 @@ JUDGE_TOOL = types.Tool(
                     ),
                     "error_type": types.Schema(
                         type=types.Type.STRING,
-                        enum=["grammar", "vocabulary", "spelling", ""],
+                        enum=["grammar", "vocabulary", "spelling"],
                     ),
                     "suggestion": types.Schema(type=types.Type.STRING),
                 },
-                required=["outcome", "error_type", "suggestion"],
+                required=["outcome", "suggestion"],
             ),
         )
     ]
