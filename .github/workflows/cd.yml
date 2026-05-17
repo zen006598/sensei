@@ -84,14 +84,14 @@ jobs:
           envs: TELEGRAM_TOKEN,ANKIWEB_EMAIL,ANKIWEB_PASSWORD,GEMINI_API_KEY,ALLOWED_USER_IDS,ANKI_DATA_PATH
           script: |
             mkdir -p ~/sensei
-            cat > ~/sensei/.env << EOF
-            TELEGRAM_TOKEN=$TELEGRAM_TOKEN
-            ANKIWEB_EMAIL=$ANKIWEB_EMAIL
-            ANKIWEB_PASSWORD=$ANKIWEB_PASSWORD
-            GEMINI_API_KEY=$GEMINI_API_KEY
-            ALLOWED_USER_IDS=$ALLOWED_USER_IDS
-            ANKI_DATA_PATH=$ANKI_DATA_PATH
-            EOF
+            {
+              printf 'TELEGRAM_TOKEN=%s\n' "$TELEGRAM_TOKEN"
+              printf 'ANKIWEB_EMAIL=%s\n' "$ANKIWEB_EMAIL"
+              printf 'ANKIWEB_PASSWORD=%s\n' "$ANKIWEB_PASSWORD"
+              printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+              printf 'ALLOWED_USER_IDS=%s\n' "$ALLOWED_USER_IDS"
+              printf 'ANKI_DATA_PATH=%s\n' "$ANKI_DATA_PATH"
+            } > ~/sensei/.env
             cd ~/sensei
             docker compose pull
             docker compose up -d
