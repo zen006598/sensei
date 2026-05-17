@@ -93,6 +93,8 @@ jobs:
           envs: TELEGRAM_TOKEN,ANKIWEB_EMAIL,ANKIWEB_PASSWORD,GEMINI_API_KEY,ALLOWED_USER_IDS,ANKI_DATA_PATH
           script: |
             mkdir -p ~/sensei
+            sudo mkdir -p "$ANKI_DATA_PATH"
+            sudo chmod 777 "$ANKI_DATA_PATH"
             {
               printf 'TELEGRAM_TOKEN=%s\n' "$TELEGRAM_TOKEN"
               printf 'ANKIWEB_EMAIL=%s\n' "$ANKIWEB_EMAIL"
