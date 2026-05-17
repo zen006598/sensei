@@ -4,7 +4,8 @@ from src.db.prefs import UserPrefsStore
 
 
 def _store():
-    tmp = tempfile.mktemp(suffix=".db")
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
     return UserPrefsStore(tmp), tmp
 
 
