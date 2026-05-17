@@ -12,6 +12,16 @@ services:
       - MAX_CARDS_PER_SESSION=20
       - GEMINI_TIMEOUT=30
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - type: bind
         source: ${ANKI_DATA_PATH:-./data/anki}
