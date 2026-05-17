@@ -18,7 +18,7 @@ def main_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton("/decks"), KeyboardButton("/help")],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
         one_time_keyboard=True,
     )
 
