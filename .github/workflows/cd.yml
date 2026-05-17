@@ -83,6 +83,15 @@ jobs:
           port: 2222
           envs: TELEGRAM_TOKEN,ANKIWEB_EMAIL,ANKIWEB_PASSWORD,GEMINI_API_KEY,ALLOWED_USER_IDS,ANKI_DATA_PATH
           script: |
+            mkdir -p ~/sensei
+            cat > ~/sensei/.env << EOF
+            TELEGRAM_TOKEN=$TELEGRAM_TOKEN
+            ANKIWEB_EMAIL=$ANKIWEB_EMAIL
+            ANKIWEB_PASSWORD=$ANKIWEB_PASSWORD
+            GEMINI_API_KEY=$GEMINI_API_KEY
+            ALLOWED_USER_IDS=$ALLOWED_USER_IDS
+            ANKI_DATA_PATH=$ANKI_DATA_PATH
+            EOF
             cd ~/sensei
             docker compose pull
             docker compose up -d
