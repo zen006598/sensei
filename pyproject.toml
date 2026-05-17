@@ -13,6 +13,7 @@ dependencies = [
     "python-dotenv==1.0.1",
     "python-telegram-bot[job-queue]==22.7",
     "rapidfuzz>=3.0.0",
+    "sqlmodel>=0.0.38",
     "structlog==24.4.0",
     "zstandard>=0.25.0",
 ]
