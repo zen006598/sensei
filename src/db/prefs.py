@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from sqlalchemy.engine import Engine
 from sqlmodel import Field, Session, SQLModel, create_engine
 
 
@@ -10,10 +11,13 @@ class UserPrefs(SQLModel, table=True):
 
 
 class UserPrefsStore:
-    def __init__(self, db_path: str):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._engine = create_engine(f"sqlite:///{db_path}")
-        SQLModel.metadata.create_all(self._engine)
+    def __init__(self, db_path: str, engine: Engine | None = None):
+        if engine is not None:
+            self._engine = engine
+        else:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._engine = create_engine(f"sqlite:///{db_path}")
+            SQLModel.metadata.create_all(self._engine)
 
     def _get_or_create(self, session: Session, user_id: int) -> UserPrefs:
         prefs = session.get(UserPrefs, user_id)

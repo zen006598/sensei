@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
@@ -6,7 +6,7 @@ from sqlmodel import Field, SQLModel
 class ConversationSession(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     card_id: int
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None
     outcome: str | None = None  # "perfect" | "skipped" | "stopped"
     summary: str | None = None  # Gemini NL summary
@@ -19,4 +19,4 @@ class ErrorRecord(SQLModel, table=True):
     card_id: int  # soft FK → Anki card id
     error_type: str  # "grammar" | "vocabulary" | "spelling"
     user_answer: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

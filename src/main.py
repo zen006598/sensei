@@ -36,7 +36,7 @@ def main() -> None:
         settings.ankiweb_email,
         settings.ankiweb_password,
     )
-    prefs_store = UserPrefsStore(settings.prefs_db_path)
+    prefs_store = UserPrefsStore(settings.prefs_db_path, engine=db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
     state_machine = QuizStateMachine(
         anki_client, anki_syncer, agent, prefs_store, db_engine

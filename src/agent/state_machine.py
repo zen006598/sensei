@@ -1,7 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
@@ -282,7 +282,7 @@ class QuizStateMachine:
             if cs:
                 for k, v in kwargs.items():
                     setattr(cs, k, v)
-                cs.ended_at = datetime.utcnow()
+                cs.ended_at = datetime.now(UTC)
                 s.add(cs)
                 s.commit()
 
