@@ -20,9 +20,6 @@ data/anki/*.anki2.bak
 # Bot database
 data/sensei.db
 
-# Docs (local plans/notes)
-docs/
-
 # Ruff cache
 .ruff_cache/
 
