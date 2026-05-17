@@ -29,7 +29,9 @@ async def test_classify_word_frequency():
     agent = GeminiAgent(api_key="test")
     part = _mock_fc("classify_frequency", {"frequency": "common"})
     with patch.object(
-        agent._client.aio.models, "generate_content", new=AsyncMock(return_value=_mock_response([part]))
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(return_value=_mock_response([part])),
     ):
         result = await agent.classify_word_frequency(_card())
     assert result == "common"
@@ -40,12 +42,25 @@ async def test_generate_question_returns_quiz_result():
     agent = GeminiAgent(api_key="test")
     part = _mock_fc(
         "quiz",
-        {"question_type": "spelling", "question_text": "How do you spell 'run'?", "correct_answer": "run", "hint": ""},
+        {
+            "question_type": "spelling",
+            "question_text": "How do you spell 'run'?",
+            "correct_answer": "run",
+            "hint": "",
+        },
     )
     with patch.object(
-        agent._client.aio.models, "generate_content", new=AsyncMock(return_value=_mock_response([part]))
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(return_value=_mock_response([part])),
     ):
-        result = await agent.generate_question(_card(), "common", retry_count=0, recent_errors=[], conversation_summary=None)
+        result = await agent.generate_question(
+            _card(),
+            "common",
+            retry_count=0,
+            recent_errors=[],
+            conversation_summary=None,
+        )
     assert isinstance(result, QuizResult)
     assert result.question_type == "spelling"
     assert result.correct_answer == "run"
@@ -56,12 +71,20 @@ async def test_evaluate_answer_returns_judge_result():
     agent = GeminiAgent(api_key="test")
     part = _mock_fc(
         "judge_score",
-        {"outcome": "grammar_error", "error_type": "grammar", "suggestion": "Use past tense: ran."},
+        {
+            "outcome": "grammar_error",
+            "error_type": "grammar",
+            "suggestion": "Use past tense: ran.",
+        },
     )
     with patch.object(
-        agent._client.aio.models, "generate_content", new=AsyncMock(return_value=_mock_response([part]))
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(return_value=_mock_response([part])),
     ):
-        result = await agent.evaluate_answer("sentence", "Use 'run' in a sentence.", "run", "I runned fast.")
+        result = await agent.evaluate_answer(
+            "sentence", "Use 'run' in a sentence.", "run", "I runned fast."
+        )
     assert isinstance(result, JudgeResult)
     assert result.outcome == "grammar_error"
     assert result.error_type == "grammar"

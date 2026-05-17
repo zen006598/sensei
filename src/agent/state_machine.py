@@ -14,7 +14,13 @@ from src.db.prefs import UserPrefsStore
 from src.quiz.models import CardData
 
 _SENSEI_FREQ_TAGS = {"sensei:common", "sensei:rare", "sensei:obsolete"}
-_SENSEI_REGISTER_TAGS = {"sensei:formal", "sensei:informal", "sensei:slang", "sensei:literary", "sensei:neutral"}
+_SENSEI_REGISTER_TAGS = {
+    "sensei:formal",
+    "sensei:informal",
+    "sensei:slang",
+    "sensei:literary",
+    "sensei:neutral",
+}
 
 
 @dataclass
@@ -267,7 +273,9 @@ class QuizStateMachine:
     def _is_mastered(self, session: _ActiveSession) -> bool:
         if session.frequency != "common":
             return True
-        has_fill_or_spelling = bool({"fill_in_blank", "spelling"} & session.correct_types)
+        has_fill_or_spelling = bool(
+            {"fill_in_blank", "spelling"} & session.correct_types
+        )
         return has_fill_or_spelling and "sentence" in session.correct_types
 
     async def _auto_start(self) -> QuizResult | None:
@@ -293,7 +301,10 @@ class QuizStateMachine:
         )
         db_id = self._create_db_session(card.card_id)
         self._active = _ActiveSession(
-            card=card, frequency=frequency, db_session_id=db_id, current_question=question
+            card=card,
+            frequency=frequency,
+            db_session_id=db_id,
+            current_question=question,
         )
         return question
 

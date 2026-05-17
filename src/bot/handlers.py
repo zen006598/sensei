@@ -88,14 +88,21 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
             first = result.correct_answer[0].upper() if result.correct_answer else "?"
             hint_line = f"{result.hint}\n" if result.hint else ""
             text = f"{label}\n\n{hint_line}First letter: {first}"
-        elif result.outcome in ("grammar_error", "wrong") and result.question_type == "sentence":
+        elif (
+            result.outcome in ("grammar_error", "wrong")
+            and result.question_type == "sentence"
+        ):
             text = f"{label}\n\n{result.suggestion.strip()}\n\nPlease refer to the hint above and try again."
         else:
             suggestion = result.suggestion.strip()
             text = f"{label}\n\nAnswer: {result.correct_answer}\n\n{suggestion}"
 
         if result.session_ended:
-            due_line = f"{result.remaining_due} card(s) remaining" if result.remaining_due is not None else ""
+            due_line = (
+                f"{result.remaining_due} card(s) remaining"
+                if result.remaining_due is not None
+                else ""
+            )
             footer = f"\n\nSynced\n{due_line}".rstrip()
             if result.new_question:
                 await update.message.reply_text(text + footer)
@@ -108,6 +115,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
 
     async def skip_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         from telegram.error import BadRequest as TgBadRequest
+
         query = update.callback_query
         try:
             await query.answer()
@@ -128,8 +136,11 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         except TgBadRequest:
             pass
 
-    async def dont_know_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def dont_know_callback(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         from telegram.error import BadRequest as TgBadRequest
+
         query = update.callback_query
         try:
             await query.answer()
@@ -248,7 +259,9 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Unhandled exception", exc_info=context.error)
         if isinstance(update, Update) and update.effective_message:
-            await update.effective_message.reply_text("An error occurred. Please try again later.")
+            await update.effective_message.reply_text(
+                "An error occurred. Please try again later."
+            )
 
     return {
         "start": start_command,

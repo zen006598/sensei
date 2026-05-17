@@ -1,12 +1,17 @@
 from google import genai
 from google.genai import types
 
-from src.agent.tools import FREQ_TOOL, JUDGE_TOOL, QUIZ_TOOL, REGISTER_TOOL, JudgeResult, QuizResult
+from src.agent.tools import (
+    FREQ_TOOL,
+    JUDGE_TOOL,
+    QUIZ_TOOL,
+    REGISTER_TOOL,
+    JudgeResult,
+    QuizResult,
+)
 from src.quiz.models import CardData
 
-_ANY = types.ToolConfig(
-    function_calling_config=types.FunctionCallingConfig(mode="ANY")
-)
+_ANY = types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="ANY"))
 
 
 class GeminiAgent:
