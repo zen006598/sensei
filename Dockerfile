@@ -16,7 +16,9 @@ RUN uv sync --frozen --no-dev
 
 COPY src/ ./src/
 
-RUN mkdir -p /data/anki && \
+ENV UV_CACHE_DIR=/app/.uv-cache
+
+RUN mkdir -p /data/anki /app/.uv-cache && \
     groupadd -r sensei && useradd -r -g sensei sensei && \
     chown -R sensei:sensei /app /data
 
