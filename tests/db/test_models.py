@@ -7,7 +7,8 @@ from src.db.models import ConversationSession, ErrorRecord
 
 
 def _engine():
-    tmp = tempfile.mktemp(suffix=".db")
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
     engine = create_engine(f"sqlite:///{tmp}")
     SQLModel.metadata.create_all(engine)
     return engine, tmp
