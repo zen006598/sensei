@@ -25,17 +25,21 @@ _OUTCOME_LABEL = {
 
 def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
 
+    _HELP_TEXT = (
+        "Commands:\n"
+        "/quiz — Start a review session\n"
+        "/decks — Choose which deck to study\n"
+        "/mode — Choose card mode (due / new / both)\n"
+        "/status — Check how many cards are due\n"
+        "/stop — End current session\n"
+        "/help — Show this help message\n"
+    )
+
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        text = (
-            "👋 Welcome to Sensei!\n\n"
-            "Commands:\n"
-            "/quiz — Start a review session\n"
-            "/decks — Choose which deck to study\n"
-            "/mode — Choose card mode (due / new / both)\n"
-            "/status — Check how many cards are due\n"
-            "/stop — End current session\n"
-        )
-        await update.message.reply_text(text)
+        await update.message.reply_text(f"👋 Welcome to Sensei!\n\n{_HELP_TEXT}")
+
+    async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await update.message.reply_text(_HELP_TEXT)
 
     async def status_command(
         update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -177,6 +181,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
 
     return {
         "start": start_command,
+        "help": help_command,
         "quiz": quiz_command,
         "stop": stop_command,
         "status": status_command,

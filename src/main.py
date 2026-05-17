@@ -47,6 +47,7 @@ def main() -> None:
     app = Application.builder().token(settings.telegram_token).build()
 
     app.add_handler(CommandHandler("start", handlers["start"]))
+    app.add_handler(CommandHandler("help", handlers["help"]))
     app.add_handler(CommandHandler("quiz", handlers["quiz"]))
     app.add_handler(CommandHandler("stop", handlers["stop"]))
     app.add_handler(CommandHandler("status", handlers["status"]))
