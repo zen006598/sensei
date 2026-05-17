@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from sqlmodel import SQLModel, create_engine
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -9,14 +10,14 @@ from telegram.ext import (
     filters,
 )
 
+from src.agent.gemini_agent import GeminiAgent
+from src.agent.state_machine import QuizStateMachine
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.bot.handlers import make_handlers
 from src.config import load_settings
-from src.db.prefs import UserPrefsStore
-from src.gemini.client import GeminiClient
-from src.quiz.engine import QuizEngine
-from src.quiz.scorer import Scorer
+from src.db.models import ConversationSession, ErrorRecord  # noqa: F401 — ensure tables registered
+from src.db.prefs import UserPrefs, UserPrefsStore  # noqa: F401
 
 
 def main() -> None:
@@ -26,6 +27,9 @@ def main() -> None:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
+    db_engine = create_engine(f"sqlite:///{settings.prefs_db_path}")
+    SQLModel.metadata.create_all(db_engine)
+
     anki_client = AnkiClient(settings.anki_collection_path)
     anki_syncer = AnkiSyncer(
         settings.anki_collection_path,
@@ -33,15 +37,12 @@ def main() -> None:
         settings.ankiweb_password,
     )
     prefs_store = UserPrefsStore(settings.prefs_db_path)
-    gemini_client = GeminiClient(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_model,
-        timeout=settings.gemini_timeout_seconds,
+    agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
+    state_machine = QuizStateMachine(
+        anki_client, anki_syncer, agent, prefs_store, db_engine
     )
-    scorer = Scorer(gemini_client)
-    engine = QuizEngine(anki_client, anki_syncer, gemini_client, scorer, prefs_store)
 
-    handlers = make_handlers(engine, anki_syncer)
+    handlers = make_handlers(state_machine, anki_syncer)
 
     app = Application.builder().token(settings.telegram_token).build()
 
@@ -50,10 +51,9 @@ def main() -> None:
     app.add_handler(CommandHandler("stop", handlers["stop"]))
     app.add_handler(CommandHandler("status", handlers["status"]))
     app.add_handler(CommandHandler("decks", handlers["decks"]))
+    app.add_handler(CommandHandler("mode", handlers["mode"]))
     app.add_handler(CallbackQueryHandler(handlers["skip"], pattern="^skip$"))
     app.add_handler(CallbackQueryHandler(handlers["hint"], pattern="^hint$"))
-    app.add_handler(CallbackQueryHandler(handlers["next"], pattern="^next$"))
-    app.add_handler(CallbackQueryHandler(handlers["end"], pattern="^end$"))
     app.add_handler(
         CallbackQueryHandler(handlers["new_session"], pattern="^new_session$")
     )
@@ -62,12 +62,12 @@ def main() -> None:
         CallbackQueryHandler(handlers["deck_select"], pattern=r"^deck_select:")
     )
     app.add_handler(
+        CallbackQueryHandler(handlers["mode_select"], pattern=r"^mode_select:")
+    )
+    app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers["handle_answer"])
     )
     app.add_error_handler(handlers["error"])
-
-    # TODO: wire daily due-card notification via app.job_queue.run_daily once
-    # TELEGRAM_CHAT_ID is added to Settings (needed as job chat_id target).
 
     app.run_polling(allowed_updates=["message", "callback_query"])
 
