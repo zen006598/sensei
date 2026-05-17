@@ -55,7 +55,9 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
                 "Already in a session. Use /stop to end it first."
             )
             return
-        await update.message.reply_text("Syncing ...")
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action="typing"
+        )
         question = await sm.start(user_id)
         if question is None:
             await update.message.reply_text("No cards due! Come back later.")
@@ -242,13 +244,15 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.edit_message_text("Use /quiz to start a new session.")
 
     async def sync_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        msg = await update.message.reply_text("Syncing ...")
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action="typing"
+        )
         result = await syncer.async_sync()
         due = sm.get_due_count_sync()
         if result.success:
-            await msg.edit_text(f"Synced\n{due} card(s) remaining")
+            await update.message.reply_text(f"Synced\n{due} card(s) remaining")
         else:
-            await msg.edit_text(f"Sync failed: {result.message}")
+            await update.message.reply_text(f"Sync failed: {result.message}")
 
     async def sync_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
