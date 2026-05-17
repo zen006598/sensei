@@ -1,16 +1,11 @@
 import asyncio
+import random
 from contextlib import contextmanager
 
 from anki.collection import Collection
 from bs4 import BeautifulSoup
 
 from src.quiz.models import CardData
-
-_MODE_QUERIES = {
-    "default": "is:due OR is:new",
-    "due": "is:due",
-    "new": "is:new",
-}
 
 
 class AnkiClient:
@@ -35,12 +30,21 @@ class AnkiClient:
         self, limit: int = 20, deck: str | None = None, mode: str = "default"
     ) -> list[CardData]:
         with self._get_collection() as col:
-            mode_query = _MODE_QUERIES.get(mode, _MODE_QUERIES["default"])
-            if deck:
-                query = f'deck:"{deck}" ({mode_query})'
+            deck_prefix = f'deck:"{deck}" ' if deck else ""
+
+            def _shuffled(filt: str) -> list[int]:
+                ids = list(col.find_cards(f"{deck_prefix}{filt}"))
+                random.shuffle(ids)
+                return ids
+
+            if mode == "due":
+                card_ids = _shuffled("is:due")
+            elif mode == "new":
+                card_ids = _shuffled("is:new")
             else:
-                query = mode_query
-            card_ids = col.find_cards(query)[:limit]
+                card_ids = _shuffled("is:due") + _shuffled("is:new")
+
+            card_ids = card_ids[:limit]
             cards = [self._card_to_data(col, cid) for cid in card_ids]
             return [c for c in cards if c.front or c.back]
 
