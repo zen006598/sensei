@@ -24,4 +24,4 @@ RUN mkdir -p /data/anki /data/db /app/.uv-cache && \
 
 USER sensei
 
-CMD ["uv", "run", "python", "-m", "src.main"]
+CMD [".venv/bin/python", "-m", "src.main"]
