@@ -7,7 +7,6 @@ from src.agent.state_machine import QuizStateMachine
 from src.anki.sync import AnkiSyncer
 from src.bot.keyboards import (
     deck_list_keyboard,
-    main_keyboard,
     mode_keyboard,
     question_keyboard,
     session_summary_keyboard,
@@ -51,15 +50,12 @@ def make_handlers(
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not _is_allowed(update):
             return
-        await update.message.reply_text(
-            f"Welcome to Sensei!\n\n{_HELP_TEXT}",
-            reply_markup=main_keyboard(),
-        )
+        await update.message.reply_text(f"Welcome to Sensei!\n\n{_HELP_TEXT}")
 
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not _is_allowed(update):
             return
-        await update.message.reply_text(_HELP_TEXT, reply_markup=main_keyboard())
+        await update.message.reply_text(_HELP_TEXT)
 
     async def status_command(
         update: Update, context: ContextTypes.DEFAULT_TYPE

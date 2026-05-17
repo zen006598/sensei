@@ -1,26 +1,4 @@
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-)
-
-
-def main_keyboard() -> ReplyKeyboardMarkup:
-    """Persistent bottom menu always visible in chat."""
-    return ReplyKeyboardMarkup(
-        [
-            [
-                KeyboardButton("/quiz"),
-                KeyboardButton("/sync"),
-                KeyboardButton("/status"),
-            ],
-            [KeyboardButton("/decks"), KeyboardButton("/help")],
-        ],
-        resize_keyboard=True,
-        is_persistent=False,
-        one_time_keyboard=True,
-    )
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def question_keyboard(has_hint: bool) -> InlineKeyboardMarkup:

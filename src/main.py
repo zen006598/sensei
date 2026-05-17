@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from sqlmodel import SQLModel, create_engine
+from telegram import BotCommand
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -18,6 +19,20 @@ from src.bot.handlers import make_handlers
 from src.config import load_settings
 from src.db.models import ConversationSession, ErrorRecord  # noqa: F401 — ensure tables registered
 from src.db.prefs import UserPrefs, UserPrefsStore  # noqa: F401
+
+_BOT_COMMANDS = [
+    BotCommand("quiz", "Start a review session"),
+    BotCommand("sync", "Sync with AnkiWeb"),
+    BotCommand("decks", "Choose deck"),
+    BotCommand("mode", "Choose card mode"),
+    BotCommand("status", "Check due count"),
+    BotCommand("stop", "End current session"),
+    BotCommand("help", "Show this help message"),
+]
+
+
+async def _post_init(app: Application) -> None:
+    await app.bot.set_my_commands(_BOT_COMMANDS)
 
 
 def main() -> None:
@@ -45,7 +60,12 @@ def main() -> None:
 
     handlers = make_handlers(state_machine, anki_syncer, settings.allowed_user_ids)
 
-    app = Application.builder().token(settings.telegram_token).build()
+    app = (
+        Application.builder()
+        .token(settings.telegram_token)
+        .post_init(_post_init)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", handlers["start"]))
     app.add_handler(CommandHandler("help", handlers["help"]))
