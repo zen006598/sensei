@@ -105,9 +105,14 @@ def make_handlers(
             suggestion = result.suggestion.strip()
             text = f"{label}\n\n{suggestion}" if suggestion else label
         elif result.outcome in ("wrong", "vocab_error") and is_simple:
-            first = result.correct_answer[0].upper() if result.correct_answer else "?"
-            hint_line = f"{result.hint}\n" if result.hint else ""
-            text = f"{label}\n\n{hint_line}First letter: {first}"
+            ans = result.correct_answer or ""
+            first = ans[0].upper() if ans else "?"
+            last = ans[-1].upper() if ans else "?"
+            shape = f"{len(ans)} letters · starts with '{first}' · ends with '{last}'"
+            hint_line = f"{result.hint}\n\n" if result.hint else ""
+            suggestion = result.suggestion.strip()
+            suggestion_line = f"{suggestion}\n\n" if suggestion else ""
+            text = f"{label}\n\n{suggestion_line}{hint_line}{shape}"
         elif (
             result.outcome in ("grammar_error", "wrong")
             and result.question_type == "sentence"
