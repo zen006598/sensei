@@ -11,7 +11,9 @@ class GeminiError(Exception):
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite", timeout: int = 30):
+    def __init__(
+        self, api_key: str, model: str = "gemini-2.5-flash-lite", timeout: int = 30
+    ):
         self._client = genai.Client(api_key=api_key)
         self._model = model
         self._config = types.GenerateContentConfig(
@@ -32,7 +34,9 @@ class GeminiClient:
         except json.JSONDecodeError as e:
             raise GeminiError(f"Invalid JSON from Gemini: {response.text[:200]}") from e
 
-    async def generate_question(self, card: CardData, quiz_type: QuizType) -> QuizQuestion:
+    async def generate_question(
+        self, card: CardData, quiz_type: QuizType
+    ) -> QuizQuestion:
         """Generate a quiz question from a card."""
         prompt = _build_question_prompt(card, quiz_type)
         data = await self.call(prompt)
@@ -45,7 +49,9 @@ class GeminiClient:
             hint=data.get("hint", ""),
         )
 
-    async def score_answer(self, question: QuizQuestion, user_answer: str) -> tuple[int, str]:
+    async def score_answer(
+        self, question: QuizQuestion, user_answer: str
+    ) -> tuple[int, str]:
         """Score user answer. Returns (ease 1-4, feedback str)."""
         prompt = _build_scoring_prompt(question, user_answer)
         data = await self.call(prompt)

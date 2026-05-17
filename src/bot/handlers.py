@@ -3,8 +3,6 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-logger = logging.getLogger(__name__)
-
 from src.anki.sync import AnkiSyncer
 from src.bot.keyboards import (
     after_answer_keyboard,
@@ -14,6 +12,8 @@ from src.bot.keyboards import (
 )
 from src.quiz.engine import QuizEngine
 from src.quiz.models import SessionSummary
+
+logger = logging.getLogger(__name__)
 
 
 def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
@@ -30,14 +30,18 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         )
         await update.message.reply_text(text)
 
-    async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def status_command(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         count = engine.get_due_count_sync()
         await update.message.reply_text(f"📚 {count} card(s) due for review.")
 
     async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.effective_user.id
         if engine.has_active_session(user_id):
-            await update.message.reply_text("You already have an active session. Use /stop to end it first.")
+            await update.message.reply_text(
+                "You already have an active session. Use /stop to end it first."
+            )
             return
         await update.message.reply_text("⏳ Starting session, syncing with AnkiWeb...")
         session = await engine.start_session(user_id, max_cards=20)
@@ -53,7 +57,9 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
             return
         user_answer = update.message.text
         result = await engine.submit_answer(user_id, user_answer)
-        ease_label = {1: "Again ❌", 2: "Hard 😓", 3: "Good ✅", 4: "Easy 🌟"}[result.ease]
+        ease_label = {1: "Again ❌", 2: "Hard 😓", 3: "Good ✅", 4: "Easy 🌟"}[
+            result.ease
+        ]
         text = f"{ease_label}\n{result.feedback}\n\n💡 Answer: {result.correct_answer}"
         await update.message.reply_text(text, reply_markup=after_answer_keyboard())
 
@@ -85,18 +91,27 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         question = await engine.next_question(user_id)
         if question is None:
             summary = await engine.end_session(user_id)
-            await query.edit_message_text(_format_summary(summary), reply_markup=session_summary_keyboard())
+            await query.edit_message_text(
+                _format_summary(summary), reply_markup=session_summary_keyboard()
+            )
         else:
-            await query.edit_message_text(_format_question(question), reply_markup=question_keyboard(bool(question.hint)))
+            await query.edit_message_text(
+                _format_question(question),
+                reply_markup=question_keyboard(bool(question.hint)),
+            )
 
     async def end_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
         await query.answer()
         user_id = update.effective_user.id
         summary = await engine.end_session(user_id)
-        await query.edit_message_text(_format_summary(summary), reply_markup=session_summary_keyboard())
+        await query.edit_message_text(
+            _format_summary(summary), reply_markup=session_summary_keyboard()
+        )
 
-    async def new_session_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def new_session_callback(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         query = update.callback_query
         await query.answer()
         await query.edit_message_text("Use /quiz to start a new session.")
@@ -105,7 +120,9 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
         query = update.callback_query
         await query.answer()
         result = await syncer.async_sync()
-        msg = "☁ Sync complete!" if result.success else f"⚠ Sync failed: {result.message}"
+        msg = (
+            "☁ Sync complete!" if result.success else f"⚠ Sync failed: {result.message}"
+        )
         await query.edit_message_text(msg)
 
     async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -114,22 +131,30 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
             await update.message.reply_text("No active session.")
             return
         summary = await engine.end_session(user_id)
-        await update.message.reply_text(_format_summary(summary), reply_markup=session_summary_keyboard())
+        await update.message.reply_text(
+            _format_summary(summary), reply_markup=session_summary_keyboard()
+        )
 
     async def decks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         deck_names = await engine.get_deck_names()
         current = engine.get_deck(update.effective_user.id)
         header = f"📂 Select a deck to study\nCurrent: {current or 'All decks'}"
-        await update.message.reply_text(header, reply_markup=deck_list_keyboard(deck_names))
+        await update.message.reply_text(
+            header, reply_markup=deck_list_keyboard(deck_names)
+        )
 
-    async def deck_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def deck_select_callback(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
         query = update.callback_query
         await query.answer()
         user_id = update.effective_user.id
         deck_name = query.data.removeprefix("deck_select:") or None
         engine.set_deck(user_id, deck_name)
         label = deck_name if deck_name else "All decks"
-        await query.edit_message_text(f"✅ Deck set to: {label}\nUse /quiz to start reviewing.")
+        await query.edit_message_text(
+            f"✅ Deck set to: {label}\nUse /quiz to start reviewing."
+        )
 
     async def send_due_notification(context: ContextTypes.DEFAULT_TYPE) -> None:
         count = engine.get_due_count_sync()
@@ -142,9 +167,7 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Unhandled exception", exc_info=context.error)
         if isinstance(update, Update) and update.effective_message:
-            await update.effective_message.reply_text(
-                "⚠️ 系統發生錯誤，請稍後再試。"
-            )
+            await update.effective_message.reply_text("⚠️ 系統發生錯誤，請稍後再試。")
 
     return {
         "start": start_command,
@@ -166,12 +189,20 @@ def make_handlers(engine: QuizEngine, syncer: AnkiSyncer):
 
 
 def _format_question(question) -> str:
-    q_type = "Fill in the blank" if question.quiz_type.value == "fill_in_blank" else "Spell it out"
+    q_type = (
+        "Fill in the blank"
+        if question.quiz_type.value == "fill_in_blank"
+        else "Spell it out"
+    )
     return f"[{q_type}]\n\n{question.question_text}"
 
 
 def _format_summary(summary: SessionSummary) -> str:
-    avg_ease = sum(summary.ease_history) / len(summary.ease_history) if summary.ease_history else 0
+    avg_ease = (
+        sum(summary.ease_history) / len(summary.ease_history)
+        if summary.ease_history
+        else 0
+    )
     return (
         f"📊 Session complete!\n\n"
         f"Cards reviewed: {summary.cards_done}\n"
@@ -182,4 +213,6 @@ def _format_summary(summary: SessionSummary) -> str:
 
 async def _send_question(update: Update, question) -> None:
     text = _format_question(question)
-    await update.message.reply_text(text, reply_markup=question_keyboard(bool(question.hint)))
+    await update.message.reply_text(
+        text, reply_markup=question_keyboard(bool(question.hint))
+    )

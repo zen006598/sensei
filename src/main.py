@@ -22,7 +22,9 @@ from src.quiz.scorer import Scorer
 def main() -> None:
     settings = load_settings()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
 
     anki_client = AnkiClient(settings.anki_collection_path)
     anki_syncer = AnkiSyncer(
@@ -52,10 +54,16 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handlers["hint"], pattern="^hint$"))
     app.add_handler(CallbackQueryHandler(handlers["next"], pattern="^next$"))
     app.add_handler(CallbackQueryHandler(handlers["end"], pattern="^end$"))
-    app.add_handler(CallbackQueryHandler(handlers["new_session"], pattern="^new_session$"))
+    app.add_handler(
+        CallbackQueryHandler(handlers["new_session"], pattern="^new_session$")
+    )
     app.add_handler(CallbackQueryHandler(handlers["sync"], pattern="^sync$"))
-    app.add_handler(CallbackQueryHandler(handlers["deck_select"], pattern=r"^deck_select:"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers["handle_answer"]))
+    app.add_handler(
+        CallbackQueryHandler(handlers["deck_select"], pattern=r"^deck_select:")
+    )
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handlers["handle_answer"])
+    )
     app.add_error_handler(handlers["error"])
 
     # TODO: wire daily due-card notification via app.job_queue.run_daily once

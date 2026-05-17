@@ -30,7 +30,9 @@ def load_settings() -> Settings:
 
     missing = [key for key in required_fields if not os.environ.get(key)]
     if missing:
-        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+        raise ValueError(
+            f"Missing required environment variables: {', '.join(missing)}"
+        )
 
     return Settings(
         telegram_token=os.environ["TELEGRAM_TOKEN"],

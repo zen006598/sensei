@@ -12,22 +12,26 @@ def question_keyboard(has_hint: bool) -> InlineKeyboardMarkup:
 
 def after_answer_keyboard() -> InlineKeyboardMarkup:
     """Keyboard shown after an answer is scored."""
-    return InlineKeyboardMarkup([
+    return InlineKeyboardMarkup(
         [
-            InlineKeyboardButton("➡ Next Card", callback_data="next"),
-            InlineKeyboardButton("🛑 End Session", callback_data="end"),
+            [
+                InlineKeyboardButton("➡ Next Card", callback_data="next"),
+                InlineKeyboardButton("🛑 End Session", callback_data="end"),
+            ]
         ]
-    ])
+    )
 
 
 def session_summary_keyboard() -> InlineKeyboardMarkup:
     """Keyboard shown at session summary."""
-    return InlineKeyboardMarkup([
+    return InlineKeyboardMarkup(
         [
-            InlineKeyboardButton("🔄 New Session", callback_data="new_session"),
-            InlineKeyboardButton("☁ Sync Now", callback_data="sync"),
+            [
+                InlineKeyboardButton("🔄 New Session", callback_data="new_session"),
+                InlineKeyboardButton("☁ Sync Now", callback_data="sync"),
+            ]
         ]
-    ])
+    )
 
 
 def deck_list_keyboard(deck_names: list[str]) -> InlineKeyboardMarkup:

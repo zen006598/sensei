@@ -77,7 +77,9 @@ class QuizEngine:
         session = self._sessions.pop(user_id, None)
         await self._syncer.async_sync()
         if session is None:
-            return SessionSummary(user_id=user_id, cards_done=0, correct_count=0, ease_history=[])
+            return SessionSummary(
+                user_id=user_id, cards_done=0, correct_count=0, ease_history=[]
+            )
         return SessionSummary(
             user_id=user_id,
             cards_done=session.cards_done,

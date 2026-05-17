@@ -50,7 +50,9 @@ class AnkiSyncer:
                         "the conflict, or choose upload/download manually."
                     ),
                 )
-            return SyncResult(success=True, message=f"Sync complete (required={required})")
+            return SyncResult(
+                success=True, message=f"Sync complete (required={required})"
+            )
         except Exception as e:
             return SyncResult(success=False, message=str(e))
         finally:
@@ -139,7 +141,12 @@ def _handle_proxy_conn(conn: socket.socket, real_endpoint: str) -> None:
             f"Content-Length: {len(content)}\r\n",
         ]
         for k, v in resp.headers.items():
-            if k.lower() not in ("content-length", "transfer-encoding", "content-encoding", "connection"):
+            if k.lower() not in (
+                "content-length",
+                "transfer-encoding",
+                "content-encoding",
+                "connection",
+            ):
                 resp_lines.append(f"{k}: {v}\r\n")
         resp_lines.append("\r\n")
         conn.sendall("".join(resp_lines).encode() + content)
@@ -149,7 +156,9 @@ def _handle_proxy_conn(conn: socket.socket, real_endpoint: str) -> None:
         conn.close()
 
 
-def _full_download_via_proxy(col: Collection, auth: SyncAuth, real_endpoint: str) -> None:
+def _full_download_via_proxy(
+    col: Collection, auth: SyncAuth, real_endpoint: str
+) -> None:
     """
     Workaround for anki Rust backend bug: full download response uses zstd without
     content size, which the Rust decompressor rejects. We run a local proxy that
