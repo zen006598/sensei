@@ -1,0 +1,330 @@
+import asyncio
+import json
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from sqlmodel import Session, select
+
+from src.agent.gemini_agent import GeminiAgent
+from src.agent.tools import JudgeResult, QuizResult
+from src.anki.client import AnkiClient
+from src.anki.sync import AnkiSyncer
+from src.db.models import ConversationSession, ErrorRecord
+from src.db.prefs import UserPrefsStore
+from src.quiz.models import CardData
+
+_SENSEI_FREQ_TAGS = {"sensei:common", "sensei:rare", "sensei:obsolete"}
+
+
+@dataclass
+class _ActiveSession:
+    card: CardData
+    db_session_id: int
+    current_question: QuizResult
+    attempt_count: int = 0
+    messages: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SubmitResult:
+    outcome: str  # "correct" | "wrong" | "semantic_correct" | "grammar_error" | "vocab_error"
+    suggestion: str
+    correct_answer: str
+    session_ended: bool
+    new_session_started: bool
+    new_question: QuizResult | None
+
+
+class QuizStateMachine:
+    def __init__(
+        self,
+        anki_client: AnkiClient,
+        anki_syncer: AnkiSyncer,
+        agent: GeminiAgent,
+        prefs_store: UserPrefsStore,
+        db_engine,
+    ):
+        self._anki = anki_client
+        self._syncer = anki_syncer
+        self._agent = agent
+        self._prefs = prefs_store
+        self._engine = db_engine
+        self._active: _ActiveSession | None = None
+        self._user_id: int = 0
+
+    def has_active_session(self) -> bool:
+        return self._active is not None
+
+    def get_current_question(self) -> QuizResult | None:
+        return self._active.current_question if self._active else None
+
+    def get_due_count_sync(self) -> int:
+        return self._anki.get_due_count()
+
+    def set_deck(self, user_id: int, deck_name: str | None) -> None:
+        self._prefs.set_deck(user_id, deck_name)
+
+    def get_deck(self, user_id: int) -> str | None:
+        return self._prefs.get_deck(user_id)
+
+    def set_mode(self, user_id: int, mode: str) -> None:
+        self._prefs.set_mode(user_id, mode)
+
+    def get_mode(self, user_id: int) -> str:
+        return self._prefs.get_mode(user_id)
+
+    async def get_deck_names(self) -> list[str]:
+        return await self._run_anki(self._anki.get_deck_names)
+
+    async def start(self, user_id: int) -> QuizResult | None:
+        self._user_id = user_id
+        await self._syncer.async_sync()
+        return await self._auto_start()
+
+    async def skip(self) -> QuizResult | None:
+        await self._end_session("skipped")
+        return await self._auto_start()
+
+    async def stop(self) -> None:
+        await self._end_session("stopped")
+
+    async def submit_answer(self, user_answer: str) -> SubmitResult:
+        assert self._active is not None
+        session = self._active
+        question = session.current_question
+
+        session.messages.append(user_answer)
+        if len(session.messages) > 3:
+            session.messages = session.messages[-3:]
+        session.attempt_count += 1
+        self._update_attempt_count(session.db_session_id, session.attempt_count)
+
+        # Spelling exact match shortcut
+        if question.question_type == "spelling":
+            if user_answer.strip().lower() == question.correct_answer.strip().lower():
+                judge = await self._agent.evaluate_answer(
+                    question.question_type,
+                    question.question_text,
+                    question.correct_answer,
+                    user_answer,
+                )
+                await self._run_anki(self._anki.answer_card, session.card.card_id, 4)
+                await self._end_session("perfect")
+                new_q = await self._auto_start()
+                return SubmitResult(
+                    outcome="correct",
+                    suggestion=judge.suggestion,
+                    correct_answer=question.correct_answer,
+                    session_ended=True,
+                    new_session_started=new_q is not None,
+                    new_question=new_q,
+                )
+
+        judge = await self._agent.evaluate_answer(
+            question.question_type,
+            question.question_text,
+            question.correct_answer,
+            user_answer,
+        )
+        return await self._handle_judgment(judge, question, session)
+
+    async def _handle_judgment(
+        self, judge: JudgeResult, question: QuizResult, session: _ActiveSession
+    ) -> SubmitResult:
+        card_id = session.card.card_id
+
+        if judge.outcome == "correct":
+            await self._run_anki(self._anki.answer_card, card_id, 4)
+            await self._end_session("perfect")
+            new_q = await self._auto_start()
+            return SubmitResult(
+                outcome="correct",
+                suggestion=judge.suggestion,
+                correct_answer=question.correct_answer,
+                session_ended=True,
+                new_session_started=new_q is not None,
+                new_question=new_q,
+            )
+
+        if judge.outcome == "semantic_correct":
+            new_q = await self._next_question(session, forced_type="sentence")
+            return SubmitResult(
+                outcome="semantic_correct",
+                suggestion=judge.suggestion,
+                correct_answer=question.correct_answer,
+                session_ended=False,
+                new_session_started=False,
+                new_question=new_q,
+            )
+
+        if judge.outcome == "grammar_error":
+            self._record_error(card_id, "grammar", session.messages[-1])
+            await self._run_anki(self._anki.answer_card, card_id, 1)
+            new_q = await self._next_question(session, forced_type="sentence")
+            return SubmitResult(
+                outcome="grammar_error",
+                suggestion=judge.suggestion,
+                correct_answer=question.correct_answer,
+                session_ended=False,
+                new_session_started=False,
+                new_question=new_q,
+            )
+
+        if judge.outcome == "vocab_error":
+            self._record_error(card_id, "vocabulary", session.messages[-1])
+            await self._run_anki(self._anki.answer_card, card_id, 1)
+            new_q = await self._next_question(session, forced_type="spelling")
+            return SubmitResult(
+                outcome="vocab_error",
+                suggestion=judge.suggestion,
+                correct_answer=question.correct_answer,
+                session_ended=False,
+                new_session_started=False,
+                new_question=new_q,
+            )
+
+        # "wrong"
+        self._record_error(card_id, "spelling", session.messages[-1])
+        await self._run_anki(self._anki.answer_card, card_id, 1)
+        new_q = await self._next_question(session)
+        return SubmitResult(
+            outcome="wrong",
+            suggestion=judge.suggestion,
+            correct_answer=question.correct_answer,
+            session_ended=False,
+            new_session_started=False,
+            new_question=new_q,
+        )
+
+    async def _auto_start(self) -> QuizResult | None:
+        deck = self._prefs.get_deck(self._user_id)
+        mode = self._prefs.get_mode(self._user_id)
+        cards = await self._run_anki(self._anki.get_due_cards, 1, deck, mode)
+        if not cards:
+            return None
+        return await self._begin_card(cards[0])
+
+    async def _begin_card(self, card: CardData) -> QuizResult:
+        frequency = await self._get_or_classify_frequency(card)
+        recent_errors = self._get_recent_errors(card.card_id)
+        last_summary = self._get_last_summary(card.card_id)
+        question = await self._agent.generate_question(
+            card,
+            frequency,
+            retry_count=0,
+            recent_errors=recent_errors,
+            conversation_summary=last_summary,
+        )
+        db_id = self._create_db_session(card.card_id)
+        self._active = _ActiveSession(
+            card=card, db_session_id=db_id, current_question=question
+        )
+        return question
+
+    async def _next_question(
+        self, session: _ActiveSession, forced_type: str | None = None
+    ) -> QuizResult:
+        frequency = await self._get_or_classify_frequency(session.card)
+        recent_errors = self._get_recent_errors(session.card.card_id)
+        last_summary = self._get_last_summary(session.card.card_id)
+        question = await self._agent.generate_question(
+            session.card,
+            frequency,
+            retry_count=session.attempt_count,
+            recent_errors=recent_errors,
+            conversation_summary=last_summary,
+            forced_type=forced_type,
+        )
+        session.current_question = question
+        return question
+
+    async def _end_session(self, outcome: str) -> None:
+        if not self._active:
+            return
+        session = self._active
+        self._active = None
+        recent_errors = self._get_recent_errors(session.card.card_id)
+        summary = await self._agent.generate_session_summary(
+            session.card.front,
+            session.card.back,
+            session.messages,
+            recent_errors,
+        )
+        self._update_db_session(
+            session.db_session_id,
+            outcome=outcome,
+            summary=summary,
+            messages=json.dumps(session.messages),
+            attempt_count=session.attempt_count,
+        )
+
+    async def _get_or_classify_frequency(self, card: CardData) -> str:
+        existing = {t for t in card.tags if t in _SENSEI_FREQ_TAGS}
+        if existing:
+            return existing.pop().removeprefix("sensei:")
+        frequency = await self._agent.classify_word_frequency(card)
+        tag = f"sensei:{frequency}"
+        await self._run_anki(self._anki.update_card_tags, card.card_id, [tag])
+        card.tags.append(tag)
+        return frequency
+
+    def _create_db_session(self, card_id: int) -> int:
+        with Session(self._engine) as s:
+            cs = ConversationSession(card_id=card_id)
+            s.add(cs)
+            s.commit()
+            s.refresh(cs)
+            return cs.id
+
+    def _update_db_session(self, session_id: int, **kwargs) -> None:
+        with Session(self._engine) as s:
+            cs = s.get(ConversationSession, session_id)
+            if cs:
+                for k, v in kwargs.items():
+                    setattr(cs, k, v)
+                cs.ended_at = datetime.utcnow()
+                s.add(cs)
+                s.commit()
+
+    def _update_attempt_count(self, session_id: int, count: int) -> None:
+        with Session(self._engine) as s:
+            cs = s.get(ConversationSession, session_id)
+            if cs:
+                cs.attempt_count = count
+                s.add(cs)
+                s.commit()
+
+    def _record_error(self, card_id: int, error_type: str, user_answer: str) -> None:
+        with Session(self._engine) as s:
+            s.add(
+                ErrorRecord(
+                    card_id=card_id, error_type=error_type, user_answer=user_answer
+                )
+            )
+            s.commit()
+
+    def _get_recent_errors(self, card_id: int, limit: int = 5) -> list[str]:
+        with Session(self._engine) as s:
+            errors = s.exec(
+                select(ErrorRecord)
+                .where(ErrorRecord.card_id == card_id)
+                .order_by(ErrorRecord.created_at.desc())
+                .limit(limit)
+            ).all()
+        return [f"{e.error_type}: {e.user_answer}" for e in reversed(errors)]
+
+    def _get_last_summary(self, card_id: int) -> str | None:
+        with Session(self._engine) as s:
+            cs = s.exec(
+                select(ConversationSession)
+                .where(ConversationSession.card_id == card_id)
+                .where(ConversationSession.summary.is_not(None))
+                .order_by(ConversationSession.started_at.desc())
+                .limit(1)
+            ).first()
+        return cs.summary if cs else None
+
+    async def _run_anki(self, fn, *args):
+        async with AnkiClient._collection_lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, fn, *args)
