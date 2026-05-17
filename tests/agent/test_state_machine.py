@@ -207,6 +207,45 @@ async def test_wrong_answer_session_continues():
 
 
 @pytest.mark.asyncio
+async def test_wrong_on_sentence_stays_on_sentence():
+    """Spelling mistakes inside a sentence answer judge as 'wrong'; retry must stay sentence."""
+    sm, agent, anki, engine, tmp_db, tmp_prefs = _setup()
+    agent.classify_word_frequency = AsyncMock(return_value="common")
+    sentence_q = QuizResult(
+        question_type="sentence",
+        question_text="Use 'busy' in a sentence.",
+        correct_answer="Times Square is the busiest intersection in the world.",
+    )
+    next_sentence_q = QuizResult(
+        question_type="sentence",
+        question_text="Try again — use 'busy' in a sentence.",
+        correct_answer="Times Square is the busiest intersection in the world.",
+    )
+    agent.generate_question = AsyncMock(side_effect=[sentence_q, next_sentence_q])
+    agent.evaluate_answer = AsyncMock(
+        return_value=JudgeResult(
+            outcome="wrong",
+            error_type="spelling",
+            suggestion="Very close — Time → Times.",
+        )
+    )
+
+    await sm.start(user_id=1)
+    result = await sm.submit_answer(
+        "Time Square is the most busy intersection in this world."
+    )
+
+    assert result.outcome == "wrong"
+    assert result.session_ended is False
+    assert result.new_question.question_type == "sentence"
+    # generate_question called with forced_type='sentence' on retry
+    _, kwargs = agent.generate_question.call_args
+    assert kwargs.get("forced_type") == "sentence"
+    os.unlink(tmp_db)
+    os.unlink(tmp_prefs)
+
+
+@pytest.mark.asyncio
 async def test_grammar_error_records_and_continues():
     sm, agent, anki, engine, tmp_db, tmp_prefs = _setup()
     agent.classify_word_frequency = AsyncMock(return_value="common")

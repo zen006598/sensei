@@ -258,7 +258,7 @@ class QuizStateMachine:
 
         # "wrong"
         self._record_error(card_id, "spelling", session.messages[-1])
-        new_q = await self._next_question(session)
+        new_q = await self._next_question(session, forced_type=question.question_type)
         return SubmitResult(
             outcome="wrong",
             suggestion=judge.suggestion,
