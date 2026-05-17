@@ -40,3 +40,31 @@ def deck_list_keyboard(deck_names: list[str]) -> InlineKeyboardMarkup:
     for name in deck_names[:8]:
         rows.append([InlineKeyboardButton(name, callback_data=f"deck_select:{name}")])
     return InlineKeyboardMarkup(rows)
+
+
+def mode_keyboard(current_mode: str) -> InlineKeyboardMarkup:
+    """Keyboard for selecting study mode."""
+
+    def label(mode: str, text: str) -> str:
+        return f"✓ {text}" if current_mode == mode else text
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    label("default", "📚 Due + New"),
+                    callback_data="mode_select:default",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    label("due", "🔁 Due only"), callback_data="mode_select:due"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    label("new", "✨ New only"), callback_data="mode_select:new"
+                )
+            ],
+        ]
+    )
