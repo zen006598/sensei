@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, create_engine
 from telegram import BotCommand
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
@@ -35,6 +36,15 @@ async def _post_init(app: Application) -> None:
     await app.bot.set_my_commands(_BOT_COMMANDS)
 
 
+def _make_auth_gate(allowed: set[int]):
+    async def _auth_gate(update, _ctx) -> None:
+        user = update.effective_user
+        if user is None or user.id not in allowed:
+            raise ApplicationHandlerStop
+
+    return _auth_gate
+
+
 def main() -> None:
     settings = load_settings()
 
@@ -58,7 +68,7 @@ def main() -> None:
         anki_client, anki_syncer, agent, prefs_store, db_engine
     )
 
-    handlers = make_handlers(state_machine, anki_syncer, settings.allowed_user_ids)
+    handlers = make_handlers(state_machine, anki_syncer)
 
     app = (
         Application.builder()
@@ -67,14 +77,29 @@ def main() -> None:
         .build()
     )
 
-    app.add_handler(CommandHandler("start", handlers["start"]))
-    app.add_handler(CommandHandler("help", handlers["help"]))
-    app.add_handler(CommandHandler("quiz", handlers["quiz"]))
-    app.add_handler(CommandHandler("stop", handlers["stop"]))
-    app.add_handler(CommandHandler("status", handlers["status"]))
-    app.add_handler(CommandHandler("sync", handlers["sync_command"]))
-    app.add_handler(CommandHandler("decks", handlers["decks"]))
-    app.add_handler(CommandHandler("mode", handlers["mode"]))
+    user_filter = (
+        filters.User(user_id=settings.allowed_user_ids)
+        if settings.allowed_user_ids
+        else None
+    )
+    text_filter = filters.TEXT & ~filters.COMMAND
+    if user_filter is not None:
+        text_filter = text_filter & user_filter
+        app.add_handler(
+            CallbackQueryHandler(_make_auth_gate(settings.allowed_user_ids)),
+            group=-1,
+        )
+
+    app.add_handler(CommandHandler("start", handlers["start"], filters=user_filter))
+    app.add_handler(CommandHandler("help", handlers["help"], filters=user_filter))
+    app.add_handler(CommandHandler("quiz", handlers["quiz"], filters=user_filter))
+    app.add_handler(CommandHandler("stop", handlers["stop"], filters=user_filter))
+    app.add_handler(CommandHandler("status", handlers["status"], filters=user_filter))
+    app.add_handler(
+        CommandHandler("sync", handlers["sync_command"], filters=user_filter)
+    )
+    app.add_handler(CommandHandler("decks", handlers["decks"], filters=user_filter))
+    app.add_handler(CommandHandler("mode", handlers["mode"], filters=user_filter))
     app.add_handler(CallbackQueryHandler(handlers["skip"], pattern="^skip$"))
     app.add_handler(CallbackQueryHandler(handlers["dont_know"], pattern="^dont_know$"))
     app.add_handler(CallbackQueryHandler(handlers["hint"], pattern="^hint$"))
@@ -88,9 +113,7 @@ def main() -> None:
     app.add_handler(
         CallbackQueryHandler(handlers["mode_select"], pattern=r"^mode_select:")
     )
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handlers["handle_answer"])
-    )
+    app.add_handler(MessageHandler(text_filter, handlers["handle_answer"]))
     app.add_error_handler(handlers["error"])
 
     app.run_polling(allowed_updates=["message", "callback_query"])
