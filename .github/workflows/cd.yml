@@ -103,4 +103,5 @@ jobs:
             } > ~/sensei/.env
             cd ~/sensei
             docker compose pull
+            docker compose down --remove-orphans || true
             docker compose up -d
