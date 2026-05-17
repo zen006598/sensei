@@ -4,6 +4,10 @@ from google.genai import types
 from src.agent.tools import FREQ_TOOL, JUDGE_TOOL, QUIZ_TOOL, JudgeResult, QuizResult
 from src.quiz.models import CardData
 
+_ANY = types.ToolConfig(
+    function_calling_config=types.FunctionCallingConfig(mode="ANY")
+)
+
 
 class GeminiAgent:
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite"):
@@ -21,7 +25,7 @@ class GeminiAgent:
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
-            config=types.GenerateContentConfig(tools=[FREQ_TOOL]),
+            config=types.GenerateContentConfig(tools=[FREQ_TOOL], tool_config=_ANY),
         )
         for part in response.candidates[0].content.parts:
             if part.function_call and part.function_call.name == "classify_frequency":
@@ -71,7 +75,7 @@ class GeminiAgent:
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
-            config=types.GenerateContentConfig(tools=[QUIZ_TOOL]),
+            config=types.GenerateContentConfig(tools=[QUIZ_TOOL], tool_config=_ANY),
         )
         for part in response.candidates[0].content.parts:
             if part.function_call and part.function_call.name == "quiz":
@@ -110,7 +114,7 @@ class GeminiAgent:
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
-            config=types.GenerateContentConfig(tools=[JUDGE_TOOL]),
+            config=types.GenerateContentConfig(tools=[JUDGE_TOOL], tool_config=_ANY),
         )
         for part in response.candidates[0].content.parts:
             if part.function_call and part.function_call.name == "judge_score":
