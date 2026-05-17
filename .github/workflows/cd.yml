@@ -84,24 +84,20 @@ jobs:
           ANKIWEB_PASSWORD: ${{ secrets.ANKIWEB_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ALLOWED_USER_IDS: ${{ secrets.ALLOWED_USER_IDS }}
-          ANKI_DATA_PATH: ${{ secrets.ANKI_DATA_PATH }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
-          envs: TELEGRAM_TOKEN,ANKIWEB_EMAIL,ANKIWEB_PASSWORD,GEMINI_API_KEY,ALLOWED_USER_IDS,ANKI_DATA_PATH
+          envs: TELEGRAM_TOKEN,ANKIWEB_EMAIL,ANKIWEB_PASSWORD,GEMINI_API_KEY,ALLOWED_USER_IDS
           script: |
             mkdir -p ~/sensei
-            sudo mkdir -p "$ANKI_DATA_PATH"
-            sudo chmod 777 "$ANKI_DATA_PATH"
             {
               printf 'TELEGRAM_TOKEN=%s\n' "$TELEGRAM_TOKEN"
               printf 'ANKIWEB_EMAIL=%s\n' "$ANKIWEB_EMAIL"
               printf 'ANKIWEB_PASSWORD=%s\n' "$ANKIWEB_PASSWORD"
               printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
               printf 'ALLOWED_USER_IDS=%s\n' "$ALLOWED_USER_IDS"
-              printf 'ANKI_DATA_PATH=%s\n' "$ANKI_DATA_PATH"
             } > ~/sensei/.env
             cd ~/sensei
             docker compose pull

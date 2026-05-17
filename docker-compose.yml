@@ -24,6 +24,9 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      - type: bind
-        source: ${ANKI_DATA_PATH:-./data/anki}
-        target: /data/anki
+      - anki_data:/data/anki
+      - sensei_db:/data/db
+
+volumes:
+  anki_data:
+  sensei_db:
