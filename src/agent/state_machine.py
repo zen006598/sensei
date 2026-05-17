@@ -93,14 +93,41 @@ class QuizStateMachine:
         await self._syncer.async_sync()
         return await self._auto_start()
 
-    async def skip(self) -> QuizResult | None:
-        await self._end_session("skipped")
-        return await self._auto_start()
-
-    async def dont_know(self) -> QuizResult | None:
-        """Fast skip: no summary generation, sync in background after lock is free."""
+    async def skip(self) -> None:
+        """Skip current card (ease 1); generate summary + sync in background."""
         if not self._active:
-            return None
+            return
+        session = self._active
+        self._active = None
+        await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
+        self._update_db_session(
+            session.db_session_id,
+            outcome="skipped",
+            messages=json.dumps(session.messages),
+            attempt_count=session.attempt_count,
+        )
+        asyncio.create_task(self._summarize_and_sync(session))
+
+    async def _summarize_and_sync(self, session: _ActiveSession) -> None:
+        recent_errors = self._get_recent_errors(session.card.card_id)
+        summary = await self._agent.generate_session_summary(
+            session.card.front,
+            session.card.back,
+            session.messages,
+            recent_errors,
+        )
+        with Session(self._engine) as s:
+            cs = s.get(ConversationSession, session.db_session_id)
+            if cs:
+                cs.summary = summary
+                s.add(cs)
+                s.commit()
+        await self._locked_sync()
+
+    async def discard_current(self) -> None:
+        """Mark current card as Again (ease 1) without a summary; sync in background."""
+        if not self._active:
+            return
         session = self._active
         self._active = None
         await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
@@ -111,6 +138,9 @@ class QuizStateMachine:
             attempt_count=session.attempt_count,
         )
         asyncio.create_task(self._locked_sync())
+
+    async def start_next(self) -> QuizResult | None:
+        """Pick the next due card and generate its first question."""
         return await self._auto_start()
 
     async def _locked_sync(self) -> None:

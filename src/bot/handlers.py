@@ -123,18 +123,24 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
             return
         if not sm.has_active_session():
             return
-        question = await sm.skip()
+
+        await sm.skip()
         try:
-            if question:
-                await query.edit_message_text("Skipped")
-                await query.message.reply_text(
-                    _format_question(question),
-                    reply_markup=question_keyboard(bool(question.hint)),
-                )
-            else:
-                await query.edit_message_text("Skipped — no more cards due.")
+            await query.edit_message_text("Skipped")
         except TgBadRequest:
             pass
+
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action="typing"
+        )
+        question = await sm.start_next()
+        if question:
+            await query.message.reply_text(
+                _format_question(question),
+                reply_markup=question_keyboard(bool(question.hint)),
+            )
+        else:
+            await query.message.reply_text("No more cards due.")
 
     async def dont_know_callback(
         update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -150,11 +156,17 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
             return
         question = sm.get_current_question()
         correct_answer = question.correct_answer if question else "—"
-        question_next = await sm.dont_know()
+
+        await sm.discard_current()
         try:
             await query.edit_message_text(f"ans: {correct_answer}")
         except TgBadRequest:
             pass
+
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action="typing"
+        )
+        question_next = await sm.start_next()
         if question_next:
             await query.message.reply_text(
                 _format_question(question_next),
