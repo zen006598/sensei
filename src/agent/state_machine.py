@@ -19,10 +19,12 @@ _SENSEI_FREQ_TAGS = {"sensei:common", "sensei:rare", "sensei:obsolete"}
 @dataclass
 class _ActiveSession:
     card: CardData
+    frequency: str
     db_session_id: int
     current_question: QuizResult
     attempt_count: int = 0
     messages: list[str] = field(default_factory=list)
+    correct_types: set = field(default_factory=set)  # question types answered correctly
 
 
 @dataclass
@@ -108,15 +110,27 @@ class QuizStateMachine:
                     question.correct_answer,
                     user_answer,
                 )
-                await self._run_anki(self._anki.answer_card, session.card.card_id, 4)
-                await self._end_session("perfect")
-                new_q = await self._auto_start()
+                session.correct_types.add("spelling")
+                if self._is_mastered(session):
+                    await self._run_anki(self._anki.answer_card, session.card.card_id, 4)
+                    await self._end_session("perfect")
+                    new_q = await self._auto_start()
+                    return SubmitResult(
+                        outcome="correct",
+                        suggestion=judge.suggestion,
+                        correct_answer=question.correct_answer,
+                        session_ended=True,
+                        new_session_started=new_q is not None,
+                        new_question=new_q,
+                    )
+                # common card: spelling done, now needs sentence
+                new_q = await self._next_question(session, forced_type="sentence")
                 return SubmitResult(
                     outcome="correct",
                     suggestion=judge.suggestion,
                     correct_answer=question.correct_answer,
-                    session_ended=True,
-                    new_session_started=new_q is not None,
+                    session_ended=False,
+                    new_session_started=False,
                     new_question=new_q,
                 )
 
@@ -134,15 +148,31 @@ class QuizStateMachine:
         card_id = session.card.card_id
 
         if judge.outcome == "correct":
-            await self._run_anki(self._anki.answer_card, card_id, 4)
-            await self._end_session("perfect")
-            new_q = await self._auto_start()
+            session.correct_types.add(question.question_type)
+            if self._is_mastered(session):
+                await self._run_anki(self._anki.answer_card, card_id, 4)
+                await self._end_session("perfect")
+                new_q = await self._auto_start()
+                return SubmitResult(
+                    outcome="correct",
+                    suggestion=judge.suggestion,
+                    correct_answer=question.correct_answer,
+                    session_ended=True,
+                    new_session_started=new_q is not None,
+                    new_question=new_q,
+                )
+            # common card: one type done, need the other
+            has_fill_or_spelling = bool(
+                {"fill_in_blank", "spelling"} & session.correct_types
+            )
+            next_type = "sentence" if has_fill_or_spelling else "fill_in_blank"
+            new_q = await self._next_question(session, forced_type=next_type)
             return SubmitResult(
                 outcome="correct",
                 suggestion=judge.suggestion,
                 correct_answer=question.correct_answer,
-                session_ended=True,
-                new_session_started=new_q is not None,
+                session_ended=False,
+                new_session_started=False,
                 new_question=new_q,
             )
 
@@ -196,6 +226,12 @@ class QuizStateMachine:
             new_question=new_q,
         )
 
+    def _is_mastered(self, session: _ActiveSession) -> bool:
+        if session.frequency != "common":
+            return True
+        has_fill_or_spelling = bool({"fill_in_blank", "spelling"} & session.correct_types)
+        return has_fill_or_spelling and "sentence" in session.correct_types
+
     async def _auto_start(self) -> QuizResult | None:
         deck = self._prefs.get_deck(self._user_id)
         mode = self._prefs.get_mode(self._user_id)
@@ -217,7 +253,7 @@ class QuizStateMachine:
         )
         db_id = self._create_db_session(card.card_id)
         self._active = _ActiveSession(
-            card=card, db_session_id=db_id, current_question=question
+            card=card, frequency=frequency, db_session_id=db_id, current_question=question
         )
         return question
 

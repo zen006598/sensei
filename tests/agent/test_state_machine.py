@@ -3,7 +3,7 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import SQLModel, Session, create_engine, select
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
@@ -55,20 +55,77 @@ async def test_start_returns_question():
 
 
 @pytest.mark.asyncio
-async def test_exact_match_ends_session():
+async def test_common_card_spelling_correct_continues_to_sentence():
+    """For common cards, spelling correct alone does not end the session — sentence follows."""
     sm, agent, anki, engine, tmp_db, tmp_prefs = _setup()
     agent.classify_word_frequency = AsyncMock(return_value="common")
+    sentence_q = QuizResult(
+        question_type="sentence", question_text="Use 'run' in a sentence.", correct_answer="I run every day."
+    )
     agent.generate_question = AsyncMock(side_effect=[
         QuizResult(question_type="spelling", question_text="Spell: run", correct_answer="run"),
-        QuizResult(question_type="spelling", question_text="Spell: eat", correct_answer="eat"),
+        sentence_q,
     ])
     agent.evaluate_answer = AsyncMock(return_value=JudgeResult(
-        outcome="correct", error_type=None, suggestion="Perfect! Also: dash, sprint."
+        outcome="correct", error_type=None, suggestion="Perfect!"
     ))
     agent.generate_session_summary = AsyncMock(return_value="Good session.")
 
     await sm.start(user_id=1)
-    result = await sm.submit_answer("run")
+    result = await sm.submit_answer("run")  # exact-match spelling
+
+    assert result.outcome == "correct"
+    assert result.session_ended is False               # session still alive
+    assert result.new_question.question_type == "sentence"
+    anki.answer_card.assert_not_called()               # ease 4 NOT yet
+    os.unlink(tmp_db)
+    os.unlink(tmp_prefs)
+
+
+@pytest.mark.asyncio
+async def test_common_card_full_mastery_ends_session():
+    """Spelling correct + sentence correct → ease 4, session ends."""
+    sm, agent, anki, engine, tmp_db, tmp_prefs = _setup()
+    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.generate_question = AsyncMock(side_effect=[
+        QuizResult(question_type="spelling", question_text="Spell: run", correct_answer="run"),
+        QuizResult(question_type="sentence", question_text="Use 'run'.", correct_answer="I run."),
+        QuizResult(question_type="spelling", question_text="Spell: eat", correct_answer="eat"),  # next card
+    ])
+    agent.evaluate_answer = AsyncMock(return_value=JudgeResult(
+        outcome="correct", error_type=None, suggestion="Great!"
+    ))
+    agent.generate_session_summary = AsyncMock(return_value="Mastered.")
+
+    await sm.start(user_id=1)
+    result1 = await sm.submit_answer("run")     # spelling ✓ → sentence question
+    assert result1.session_ended is False
+    anki.answer_card.assert_not_called()
+
+    result2 = await sm.submit_answer("I run.")  # sentence ✓ → mastered
+    assert result2.outcome == "correct"
+    assert result2.session_ended is True
+    anki.answer_card.assert_called_once_with(1, 4)
+    os.unlink(tmp_db)
+    os.unlink(tmp_prefs)
+
+
+@pytest.mark.asyncio
+async def test_rare_card_ends_after_one_correct():
+    """Rare/obsolete cards only need one correct fill_in_blank → ease 4 immediately."""
+    sm, agent, anki, engine, tmp_db, tmp_prefs = _setup()
+    agent.classify_word_frequency = AsyncMock(return_value="rare")
+    agent.generate_question = AsyncMock(side_effect=[
+        QuizResult(question_type="fill_in_blank", question_text="___ means hate.", correct_answer="abhor"),
+        QuizResult(question_type="fill_in_blank", question_text="next card", correct_answer="x"),
+    ])
+    agent.evaluate_answer = AsyncMock(return_value=JudgeResult(
+        outcome="correct", error_type=None, suggestion="Correct!"
+    ))
+    agent.generate_session_summary = AsyncMock(return_value="Done.")
+
+    await sm.start(user_id=1)
+    result = await sm.submit_answer("abhor")
 
     assert result.outcome == "correct"
     assert result.session_ended is True
@@ -116,7 +173,6 @@ async def test_grammar_error_records_and_continues():
 
     assert result.outcome == "grammar_error"
     assert result.session_ended is False
-    from sqlmodel import Session, select
     with Session(engine) as s:
         errors = s.exec(select(ErrorRecord).where(ErrorRecord.card_id == 1)).all()
     assert len(errors) == 1
