@@ -62,7 +62,8 @@ jobs:
       - name: Connect Tailscale
         uses: tailscale/github-action@v4.1.2
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-client-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
 
       - name: Copy docker-compose.yml
         uses: appleboy/scp-action@v1.0.0
