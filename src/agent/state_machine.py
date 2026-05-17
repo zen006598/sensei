@@ -257,6 +257,7 @@ class QuizStateMachine:
             messages=json.dumps(session.messages),
             attempt_count=session.attempt_count,
         )
+        await self._syncer.async_sync()
 
     async def _get_or_classify_frequency(self, card: CardData) -> str:
         existing = {t for t in card.tags if t in _SENSEI_FREQ_TAGS}
