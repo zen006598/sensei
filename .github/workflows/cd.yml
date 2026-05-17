@@ -3,6 +3,12 @@ name: CD
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - '.env.example'
+      - '.python-version'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
