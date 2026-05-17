@@ -19,6 +19,7 @@ class Settings:
     scheduler_daily_hour: int
     max_cards_per_session: int
     allowed_user_ids: set[int]
+    log_level: str
 
 
 def load_settings() -> Settings:
@@ -53,4 +54,5 @@ def load_settings() -> Settings:
             for uid in os.environ.get("ALLOWED_USER_IDS", "").split(",")
             if uid.strip()
         },
+        log_level=os.environ.get("LOG_LEVEL", "INFO").upper(),
     )

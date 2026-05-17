@@ -24,7 +24,7 @@ def main() -> None:
     settings = load_settings()
 
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+        level=settings.log_level, format="%(asctime)s %(levelname)s %(message)s"
     )
     logging.getLogger("google_genai").setLevel(logging.WARNING)
 
