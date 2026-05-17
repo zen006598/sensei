@@ -1,6 +1,6 @@
 services:
   sensei:
-    build: .
+    image: ghcr.io/zen006598/sensei:latest
     restart: unless-stopped
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
