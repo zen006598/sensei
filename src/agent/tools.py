@@ -88,3 +88,22 @@ FREQ_TOOL = types.Tool(
         )
     ]
 )
+
+REGISTER_TOOL = types.Tool(
+    function_declarations=[
+        types.FunctionDeclaration(
+            name="classify_register",
+            description="Classify the formality register of this vocabulary item",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "register": types.Schema(
+                        type=types.Type.STRING,
+                        enum=["formal", "informal", "slang", "literary", "neutral"],
+                    ),
+                },
+                required=["register"],
+            ),
+        )
+    ]
+)

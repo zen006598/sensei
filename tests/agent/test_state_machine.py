@@ -102,10 +102,10 @@ async def test_common_card_full_mastery_ends_session():
     assert result1.session_ended is False
     anki.answer_card.assert_not_called()
 
-    result2 = await sm.submit_answer("I run.")  # sentence ✓ → mastered
+    result2 = await sm.submit_answer("I run.")  # sentence ✓ → mastered, attempt_count=2 → ease 3
     assert result2.outcome == "correct"
     assert result2.session_ended is True
-    anki.answer_card.assert_called_once_with(1, 4)
+    anki.answer_card.assert_called_once_with(1, 3)
     os.unlink(tmp_db)
     os.unlink(tmp_prefs)
 

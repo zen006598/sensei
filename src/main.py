@@ -26,6 +26,7 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+    logging.getLogger("google_genai").setLevel(logging.WARNING)
 
     db_engine = create_engine(f"sqlite:///{settings.prefs_db_path}")
     SQLModel.metadata.create_all(db_engine)
@@ -51,9 +52,11 @@ def main() -> None:
     app.add_handler(CommandHandler("quiz", handlers["quiz"]))
     app.add_handler(CommandHandler("stop", handlers["stop"]))
     app.add_handler(CommandHandler("status", handlers["status"]))
+    app.add_handler(CommandHandler("sync", handlers["sync_command"]))
     app.add_handler(CommandHandler("decks", handlers["decks"]))
     app.add_handler(CommandHandler("mode", handlers["mode"]))
     app.add_handler(CallbackQueryHandler(handlers["skip"], pattern="^skip$"))
+    app.add_handler(CallbackQueryHandler(handlers["dont_know"], pattern="^dont_know$"))
     app.add_handler(CallbackQueryHandler(handlers["hint"], pattern="^hint$"))
     app.add_handler(
         CallbackQueryHandler(handlers["new_session"], pattern="^new_session$")
