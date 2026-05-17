@@ -6,6 +6,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine
 class UserPrefs(SQLModel, table=True):
     user_id: int = Field(primary_key=True)
     selected_deck: str | None = None
+    quiz_mode: str = "default"  # "default" | "due" | "new"
 
 
 class UserPrefsStore:
@@ -14,6 +15,14 @@ class UserPrefsStore:
         self._engine = create_engine(f"sqlite:///{db_path}")
         SQLModel.metadata.create_all(self._engine)
 
+    def _get_or_create(self, session: Session, user_id: int) -> UserPrefs:
+        prefs = session.get(UserPrefs, user_id)
+        if prefs is None:
+            prefs = UserPrefs(user_id=user_id)
+            session.add(prefs)
+            session.flush()
+        return prefs
+
     def get_deck(self, user_id: int) -> str | None:
         with Session(self._engine) as session:
             prefs = session.get(UserPrefs, user_id)
@@ -21,10 +30,19 @@ class UserPrefsStore:
 
     def set_deck(self, user_id: int, deck_name: str | None) -> None:
         with Session(self._engine) as session:
+            prefs = self._get_or_create(session, user_id)
+            prefs.selected_deck = deck_name
+            session.add(prefs)
+            session.commit()
+
+    def get_mode(self, user_id: int) -> str:
+        with Session(self._engine) as session:
             prefs = session.get(UserPrefs, user_id)
-            if prefs is None:
-                prefs = UserPrefs(user_id=user_id, selected_deck=deck_name)
-            else:
-                prefs.selected_deck = deck_name
+            return prefs.quiz_mode if prefs else "default"
+
+    def set_mode(self, user_id: int, mode: str) -> None:
+        with Session(self._engine) as session:
+            prefs = self._get_or_create(session, user_id)
+            prefs.quiz_mode = mode
             session.add(prefs)
             session.commit()

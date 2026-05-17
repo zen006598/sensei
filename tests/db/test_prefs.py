@@ -44,3 +44,16 @@ def test_multiple_users_independent():
     assert store.get_deck(1) == "Deck A"
     assert store.get_deck(2) == "Deck B"
     os.unlink(tmp)
+
+
+def test_get_mode_returns_default_for_unknown_user():
+    store, tmp = _store()
+    assert store.get_mode(12345) == "default"
+    os.unlink(tmp)
+
+
+def test_set_and_get_mode():
+    store, tmp = _store()
+    store.set_mode(1, "due")
+    assert store.get_mode(1) == "due"
+    os.unlink(tmp)
