@@ -8,6 +8,7 @@ from sqlmodel import SQLModel, Session, create_engine, select
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.agent.tools import JudgeResult, QuizResult
+from src.agent.word_classifier import WordClassifier
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record import ErrorRecord
 from src.db.error_record_store import ErrorRecordStore
@@ -41,7 +42,9 @@ def _setup():
     syncer = MagicMock()
     syncer.async_sync = AsyncMock()
 
-    sm = QuizStateMachine(anki, syncer, agent, prefs, errors, sessions)
+    classifier = WordClassifier(agent, anki)
+
+    sm = QuizStateMachine(anki, syncer, agent, classifier, prefs, errors, sessions)
     return sm, agent, anki, engine, tmp_db, tmp_prefs
 
 

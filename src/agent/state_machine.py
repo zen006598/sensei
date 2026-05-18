@@ -4,21 +4,13 @@ from dataclasses import dataclass, field
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.tools import JudgeResult, QuizResult
+from src.agent.word_classifier import WordClassifier
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
-
-_SENSEI_FREQ_TAGS = {"sensei:common", "sensei:rare", "sensei:obsolete"}
-_SENSEI_REGISTER_TAGS = {
-    "sensei:formal",
-    "sensei:informal",
-    "sensei:slang",
-    "sensei:literary",
-    "sensei:neutral",
-}
 
 
 @dataclass
@@ -51,6 +43,7 @@ class QuizStateMachine:
         anki_client: AnkiClient,
         anki_syncer: AnkiSyncer,
         agent: GeminiAgent,
+        classifier: WordClassifier,
         prefs_store: UserPrefsStore,
         errors_store: ErrorRecordStore,
         sessions_store: ConversationSessionStore,
@@ -58,6 +51,7 @@ class QuizStateMachine:
         self._anki = anki_client
         self._syncer = anki_syncer
         self._agent = agent
+        self._classifier = classifier
         self._prefs = prefs_store
         self._errors = errors_store
         self._sessions = sessions_store
@@ -297,8 +291,8 @@ class QuizStateMachine:
         return await self._begin_card(cards[0])
 
     async def _begin_card(self, card: CardData) -> QuizResult:
-        frequency = await self._get_or_classify_frequency(card)
-        register = await self._get_or_classify_register(card)
+        frequency = await self._classifier.frequency(card)
+        register = await self._classifier.register(card)
         recent_errors = self._errors.recent_for_card(card.card_id)
         last_summary = self._sessions.last_summary_for_card(card.card_id)
         question = await self._agent.generate_question(
@@ -321,8 +315,8 @@ class QuizStateMachine:
     async def _next_question(
         self, session: _ActiveSession, forced_type: str | None = None
     ) -> QuizResult:
-        frequency = await self._get_or_classify_frequency(session.card)
-        register = await self._get_or_classify_register(session.card)
+        frequency = await self._classifier.frequency(session.card)
+        register = await self._classifier.register(session.card)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
         last_summary = self._sessions.last_summary_for_card(session.card.card_id)
         question = await self._agent.generate_question(
@@ -363,23 +357,3 @@ class QuizStateMachine:
         )
         await self._syncer.async_sync()
         return await self.get_due_count()
-
-    async def _get_or_classify_frequency(self, card: CardData) -> str:
-        existing = {t for t in card.tags if t in _SENSEI_FREQ_TAGS}
-        if existing:
-            return existing.pop().removeprefix("sensei:")
-        frequency = await self._agent.classify_word_frequency(card)
-        tag = f"sensei:{frequency}"
-        await self._anki.update_card_tags(card.card_id, [tag])
-        card.tags.append(tag)
-        return frequency
-
-    async def _get_or_classify_register(self, card: CardData) -> str:
-        existing = {t for t in card.tags if t in _SENSEI_REGISTER_TAGS}
-        if existing:
-            return existing.pop().removeprefix("sensei:")
-        register = await self._agent.classify_word_register(card)
-        tag = f"sensei:{register}"
-        await self._anki.update_card_tags(card.card_id, [tag])
-        card.tags.append(tag)
-        return register

@@ -14,6 +14,7 @@ from telegram.ext import (
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
+from src.agent.word_classifier import WordClassifier
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.bot.handlers import make_handlers
@@ -70,8 +71,15 @@ def main() -> None:
     errors_store = ErrorRecordStore(db_engine)
     sessions_store = ConversationSessionStore(db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
+    classifier = WordClassifier(agent, anki_client)
     state_machine = QuizStateMachine(
-        anki_client, anki_syncer, agent, prefs_store, errors_store, sessions_store
+        anki_client,
+        anki_syncer,
+        agent,
+        classifier,
+        prefs_store,
+        errors_store,
+        sessions_store,
     )
 
     handlers = make_handlers(state_machine, anki_syncer, prefs_store)
