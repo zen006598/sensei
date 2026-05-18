@@ -19,6 +19,7 @@ from src.anki.sync import AnkiSyncer
 from src.bot.handlers import make_handlers
 from src.config import load_settings
 from src.db.conversation_session import ConversationSession  # noqa: F401 — ensure table registered
+from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table registered
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
@@ -67,9 +68,10 @@ def main() -> None:
     )
     prefs_store = UserPrefsStore(settings.db_path, engine=db_engine)
     errors_store = ErrorRecordStore(db_engine)
+    sessions_store = ConversationSessionStore(db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
     state_machine = QuizStateMachine(
-        anki_client, anki_syncer, agent, prefs_store, errors_store, db_engine
+        anki_client, anki_syncer, agent, prefs_store, errors_store, sessions_store
     )
 
     handlers = make_handlers(state_machine, anki_syncer, prefs_store)

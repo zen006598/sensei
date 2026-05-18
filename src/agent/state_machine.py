@@ -1,15 +1,12 @@
 import asyncio
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-
-from sqlmodel import Session, select
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.tools import JudgeResult, QuizResult
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
-from src.db.conversation_session import ConversationSession
+from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
@@ -56,14 +53,14 @@ class QuizStateMachine:
         agent: GeminiAgent,
         prefs_store: UserPrefsStore,
         errors_store: ErrorRecordStore,
-        db_engine,
+        sessions_store: ConversationSessionStore,
     ):
         self._anki = anki_client
         self._syncer = anki_syncer
         self._agent = agent
         self._prefs = prefs_store
         self._errors = errors_store
-        self._engine = db_engine
+        self._sessions = sessions_store
         self._active: _ActiveSession | None = None
         self._user_id: int = 0
 
@@ -91,7 +88,7 @@ class QuizStateMachine:
         session = self._active
         self._active = None
         await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
-        self._update_db_session(
+        self._sessions.finalize(
             session.db_session_id,
             outcome="skipped",
             messages=json.dumps(session.messages),
@@ -107,12 +104,7 @@ class QuizStateMachine:
             session.messages,
             recent_errors,
         )
-        with Session(self._engine) as s:
-            cs = s.get(ConversationSession, session.db_session_id)
-            if cs:
-                cs.summary = summary
-                s.add(cs)
-                s.commit()
+        self._sessions.set_summary(session.db_session_id, summary)
         await self._locked_sync()
 
     async def discard_current(self) -> None:
@@ -122,7 +114,7 @@ class QuizStateMachine:
         session = self._active
         self._active = None
         await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
-        self._update_db_session(
+        self._sessions.finalize(
             session.db_session_id,
             outcome="skipped",
             messages=json.dumps(session.messages),
@@ -151,7 +143,9 @@ class QuizStateMachine:
         if len(session.messages) > 3:
             session.messages = session.messages[-3:]
         session.attempt_count += 1
-        self._update_attempt_count(session.db_session_id, session.attempt_count)
+        self._sessions.update_attempt_count(
+            session.db_session_id, session.attempt_count
+        )
 
         # Spelling exact match shortcut
         if question.question_type == "spelling":
@@ -311,7 +305,7 @@ class QuizStateMachine:
         frequency = await self._get_or_classify_frequency(card)
         register = await self._get_or_classify_register(card)
         recent_errors = self._errors.recent_for_card(card.card_id)
-        last_summary = self._get_last_summary(card.card_id)
+        last_summary = self._sessions.last_summary_for_card(card.card_id)
         question = await self._agent.generate_question(
             card,
             frequency,
@@ -320,7 +314,7 @@ class QuizStateMachine:
             conversation_summary=last_summary,
             register=register,
         )
-        db_id = self._create_db_session(card.card_id)
+        db_id = self._sessions.create(card.card_id)
         self._active = _ActiveSession(
             card=card,
             frequency=frequency,
@@ -335,7 +329,7 @@ class QuizStateMachine:
         frequency = await self._get_or_classify_frequency(session.card)
         register = await self._get_or_classify_register(session.card)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
-        last_summary = self._get_last_summary(session.card.card_id)
+        last_summary = self._sessions.last_summary_for_card(session.card.card_id)
         question = await self._agent.generate_question(
             session.card,
             frequency,
@@ -365,7 +359,7 @@ class QuizStateMachine:
             session.messages,
             recent_errors,
         )
-        self._update_db_session(
+        self._sessions.finalize(
             session.db_session_id,
             outcome=outcome,
             summary=summary,
@@ -394,43 +388,6 @@ class QuizStateMachine:
         await self._run_anki(self._anki.update_card_tags, card.card_id, [tag])
         card.tags.append(tag)
         return register
-
-    def _create_db_session(self, card_id: int) -> int:
-        with Session(self._engine) as s:
-            cs = ConversationSession(card_id=card_id)
-            s.add(cs)
-            s.commit()
-            s.refresh(cs)
-            return cs.id
-
-    def _update_db_session(self, session_id: int, **kwargs) -> None:
-        with Session(self._engine) as s:
-            cs = s.get(ConversationSession, session_id)
-            if cs:
-                for k, v in kwargs.items():
-                    setattr(cs, k, v)
-                cs.ended_at = datetime.now(UTC)
-                s.add(cs)
-                s.commit()
-
-    def _update_attempt_count(self, session_id: int, count: int) -> None:
-        with Session(self._engine) as s:
-            cs = s.get(ConversationSession, session_id)
-            if cs:
-                cs.attempt_count = count
-                s.add(cs)
-                s.commit()
-
-    def _get_last_summary(self, card_id: int) -> str | None:
-        with Session(self._engine) as s:
-            cs = s.exec(
-                select(ConversationSession)
-                .where(ConversationSession.card_id == card_id)
-                .where(ConversationSession.summary.is_not(None))
-                .order_by(ConversationSession.started_at.desc())
-                .limit(1)
-            ).first()
-        return cs.summary if cs else None
 
     async def _run_anki(self, fn, *args):
         async with AnkiClient._collection_lock:

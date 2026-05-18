@@ -8,6 +8,7 @@ from sqlmodel import SQLModel, Session, create_engine, select
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.agent.tools import JudgeResult, QuizResult
+from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record import ErrorRecord
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
@@ -23,6 +24,7 @@ def _setup():
     SQLModel.metadata.create_all(engine)
     prefs = UserPrefsStore(tmp_prefs)
     errors = ErrorRecordStore(engine)
+    sessions = ConversationSessionStore(engine)
 
     agent = MagicMock(spec=GeminiAgent)
     anki = MagicMock()
@@ -37,7 +39,7 @@ def _setup():
     syncer = MagicMock()
     syncer.async_sync = AsyncMock()
 
-    sm = QuizStateMachine(anki, syncer, agent, prefs, errors, engine)
+    sm = QuizStateMachine(anki, syncer, agent, prefs, errors, sessions)
     return sm, agent, anki, engine, tmp_db, tmp_prefs
 
 
