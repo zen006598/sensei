@@ -186,12 +186,12 @@ def make_handlers(
 
     async def hint_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
+        await query.answer()
         question = sm.get_current_question()
         if not question:
-            await query.answer()
             return
         hint_text = question.hint if question.hint else "No hint available."
-        await query.answer(hint_text, show_alert=True)
+        await query.message.reply_text(hint_text)
 
     async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not sm.has_active_session():

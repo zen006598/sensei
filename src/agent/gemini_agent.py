@@ -96,16 +96,11 @@ class GeminiAgent:
             )
         context = "\n".join(context_lines)
 
-        if register:
-            fill_in_blank_hint = (
-                f"hint = '{register} | ' followed by a one-sentence explanation of the word's meaning, "
-                f"e.g. '{register} | a formal promise or guarantee'."
-            )
-        else:
-            fill_in_blank_hint = (
-                "hint = a one-sentence explanation of the word's meaning, "
-                "e.g. 'a formal promise or guarantee'."
-            )
+        register_bullet = (
+            f"The FIRST bullet of the hint MUST be exactly: '- register: {register}'.\n"
+            if register
+            else ""
+        )
 
         prompt = (
             "You are a language learning quiz generator.\n"
@@ -115,11 +110,30 @@ class GeminiAgent:
             "Question type rules:\n"
             "- spelling: Give the word's meaning/definition as the question (e.g. 'What word means \"to move quickly on foot\"?'). "
             "Do NOT just say 'Spell: {word}'. The learner must recall and spell the word from its definition.\n"
-            "- fill_in_blank: question_text MUST be a complete sentence with the target word replaced by '___' (e.g. 'She made a solemn ___ to keep her word.'). "
-            f"{fill_in_blank_hint}\n"
+            "- fill_in_blank: question_text MUST be a complete sentence with the target word replaced by '___' (e.g. 'She made a solemn ___ to keep her word.').\n"
             f"- sentence: Explicitly state the target word (from card front: '{card.front}') in the question, "
             "then provide at least 2 short scenario descriptions. "
-            "Format the question_text like: 'Use the word \"<word>\" in a sentence for one of these situations:\n1. <scenario A>\n2. <scenario B>'"
+            "Format the question_text like: 'Use the word \"<word>\" in a sentence for one of these situations:\n1. <scenario A>\n2. <scenario B>'\n\n"
+            "Hint format rules (the 'hint' field):\n"
+            "Output as plain-text bullets — one bullet per line, each line starting with '- '. Keep bullets concise.\n"
+            f"{register_bullet}"
+            "Then, per question type, include these bullets in order:\n"
+            "- spelling:\n"
+            "    - syllable count (e.g. '2 syllables')\n"
+            "    - first letter (e.g. \"starts with 'P'\")\n"
+            "    - one rhyming or similar-sounding word\n"
+            "- fill_in_blank:\n"
+            "    - part of speech\n"
+            "    - one common collocation or grammatical pattern\n"
+            "    - one example sentence that paraphrases with a synonym (NOT the target word)\n"
+            "    - one-sentence meaning explanation\n"
+            "- sentence:\n"
+            "    - part of speech\n"
+            "    - 1–2 close synonyms\n"
+            "    - one-sentence meaning explanation\n"
+            f"CRITICAL: For fill_in_blank, the hint MUST NOT contain the target word '{card.front}' or any inflected/stemmed form of it "
+            "(e.g. for 'promise', do not write 'promise', 'promised', 'promising', 'promises'). "
+            "For sentence and spelling, the target word may appear in synonym lists but should not be the whole answer."
         )
         data = await self._structured(prompt, QUIZ_SCHEMA)
         return QuizResult(
