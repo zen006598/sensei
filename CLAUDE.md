@@ -32,13 +32,17 @@ The bot is a four-layer pipeline. Each `/quiz` message flows: Telegram → `bot/
 
 ### Layers
 
-- **`src/main.py`** wires every component once at startup, creates the SQLite engine for `ConversationSession` / `ErrorRecord` / `UserPrefs`, and registers all PTB handlers. Single-process, single polling loop.
-- **`src/bot/`** — PTB handlers and inline/reply keyboards. Handlers gate on `ALLOWED_USER_IDS` and call into the state machine; they never touch Anki or Gemini directly.
-- **`src/agent/state_machine.py`** — `QuizStateMachine` is the orchestrator. It owns the current quiz session, runs all Gemini and Anki calls, persists session/error rows, and drives the per-card question sequence.
-- **`src/agent/gemini_agent.py`** — Thin wrapper around `google-genai`. Every call uses **function-calling tools** (`QUIZ_TOOL`, `JUDGE_TOOL`, `FREQ_TOOL`, `REGISTER_TOOL` in `agent/tools.py`) with `tool_config=ANY`, so the model is forced to return structured args instead of free text. To change a question/judge schema, edit `agent/tools.py`.
-- **`src/anki/client.py`** opens `collection.anki2` per operation via a contextmanager (open → use → close) and serialises **all** Anki access through a class-level `asyncio.Lock` (`AnkiClient._collection_lock`). `state_machine._run_anki()` is the only correct way to call Anki methods — it takes the lock and runs the sync call in an executor.
-- **`src/anki/sync.py`** — `AnkiSyncer.sync()` talks to AnkiWeb via the `anki` package's internal sync API. Full-download responses go through a **local HTTP proxy** (`_full_download_via_proxy`) that re-compresses zstd payloads with a content size header — workaround for an Anki Rust-backend bug. Don't remove this proxy without verifying full sync still works.
-- **`src/db/`** — SQLModel tables (`ConversationSession`, `ErrorRecord`, `UserPrefs`) on SQLite. `UserPrefsStore` is per-user; the two session tables are global, keyed by `card_id`.
+- **`src/main.py`** — composition root only. Loads settings, runs `Path(db_path).parent.mkdir`, builds the SQLite engine + `create_all`, instantiates every collaborator (clients, stores, agent, classifier, state machine, handlers), hands the configured PTB `Application` off to `run_polling`. No business logic.
+- **`src/bot/handlers.py`** — PTB handler functions, closing over the deps `make_handlers` receives. Auth gating via `ALLOWED_USER_IDS` filter. Handlers go through the state machine, `AnkiClient`, `AnkiSyncer`, or `UserPrefsStore` (all passed in via DI) — they never reach into Gemini or the DB directly.
+- **`src/bot/app.py`** — `build_app(token, allowed_user_ids, handlers)` builds the PTB `Application`, sets the `BotCommand` menu, installs the `group=-1` auth gate for callback queries, registers every `CommandHandler` / `CallbackQueryHandler` / `MessageHandler`.
+- **`src/agent/state_machine.py`** — `QuizStateMachine`: quiz flow & mastery rules only. Tracks the current `_ActiveSession`, drives question generation / grading / next-question routing. Delegates ALL persistence to stores and ALL Anki/Gemini I/O to collaborators. No `Session(engine)`, no `asyncio.Lock`, no Anki tag operations directly.
+- **`src/agent/gemini_agent.py`** — `GeminiAgent`: thin wrapper around `google-genai`. Every call uses **function-calling tools** (`QUIZ_TOOL`, `JUDGE_TOOL`, `FREQ_TOOL`, `REGISTER_TOOL` in `agent/tools.py`) with `tool_config=ANY`, so the model is forced to return structured args instead of free text. To change a question/judge schema, edit `agent/tools.py`.
+- **`src/agent/word_classifier.py`** — `WordClassifier`: coordinates "ask Gemini to classify frequency / register, cache as `sensei:` tag on the Anki note". The state machine calls `classifier.frequency(card)` / `.register(card)` — it doesn't know about caching or the tag set.
+- **`src/anki/client.py`** — `AnkiClient`: async public API. Each method opens `collection.anki2` per operation (contextmanager: open → use → close), takes the shared lock and dispatches the blocking call to an executor inside `_run_locked`. Callers just `await anki.get_due_count()` — they don't see the lock or thread.
+- **`src/anki/sync.py`** — `AnkiSyncer`: talks to AnkiWeb via the `anki` package's internal sync API. `async_sync()` also takes the shared lock (closes the race between a background `_summarize_and_sync` and a foreground `/quiz`). Full-download responses go through a **local HTTP proxy** (`_full_download_via_proxy`) that re-compresses zstd payloads with a content size header — workaround for an Anki Rust-backend bug. Don't remove this proxy without verifying full sync still works.
+- **`src/anki/_lock.py`** — single shared `collection_lock = asyncio.Lock()`. Both `AnkiClient` and `AnkiSyncer` import it so every `Collection(path)` open serialises globally.
+- **`src/db/`** — one file per class, file name = class name (snake_case). SQLModel tables: `conversation_session.py`, `error_record.py`, `user_prefs.py`. Stores: `conversation_session_store.py`, `error_record_store.py`, `user_prefs_store.py`. Every store's `__init__` takes a single `Engine`. The state machine never touches `Session(engine)` directly.
+- **`src/quiz/models.py`** — pure `@dataclass` DTOs (`CardData`). In-memory transfer only, never persisted.
 
 ### Quiz flow (the part that's not obvious from the code)
 
@@ -53,6 +57,44 @@ Per Anki card, the state machine generates and grades questions in a small loop 
 ### Single-active-session invariant
 
 `QuizStateMachine._active` is a single `_ActiveSession | None`, **not** a dict keyed by user. The bot supports only one quiz at a time across the whole process. `ALLOWED_USER_IDS` is the only thing preventing concurrent users from clobbering each other's session — keep it configured. (This is one of the divergences from `PLAN.md`, which described a per-user dict.)
+
+In any path that ends a session (`skip`, `discard_current`, `_end_session`), clear `self._active = None` **before** any `await` — keep a local ref and operate on that. Otherwise a second handler can land on the event loop during the async work and observe the half-torn-down session as "still active".
+
+## Conventions
+
+The following rules govern where things live. Apply them when adding code and when reviewing changes.
+
+### One file per class, file name = class name
+
+No `models.py` grab-bags. `ConversationSession` lives in `conversation_session.py`, `UserPrefsStore` in `user_prefs_store.py`. snake_case file, PascalCase class.
+
+### No pure pass-through wrappers
+
+If a method body is just `return self._x.method(...)` with no added behaviour, **delete it** and have the caller hold the direct dependency. Wrapping is justified only when it adds: locking, executor dispatch, default-on-miss, upsert, error translation, or unifies inconsistent APIs. Pure forwarding is dead weight that grows the surface and obscures the real seams.
+
+Examples we removed during the refactor: `QuizStateMachine.set_deck/get_deck/set_mode/get_mode` (handlers now take `UserPrefsStore` directly), `get_due_count/get_deck_names` (handlers now take `AnkiClient` directly), `get_due_count_sync` (was lock-bypass dead code).
+
+### When to extract a `*Store`
+
+Extract a store class when **any** of these holds:
+
+- `Session(engine)` boilerplate is repeated across multiple call sites,
+- the access pattern needs default-on-miss / upsert / "get or create",
+- caller orchestration is complex enough that inline ORM details obscure the main logic.
+
+Do NOT extract for a single caller doing one or two ad-hoc queries — that's premature abstraction. The rule isn't "if it's ORM then store"; it's "if the boilerplate or upsert logic is hurting the caller, store".
+
+### All Anki access goes through `AnkiClient` async methods
+
+Never construct `Collection(path)` directly outside `AnkiClient` (or `AnkiSyncer`, which is intentionally special). Never bypass `collection_lock`. If you find yourself wanting sync Anki access, you're writing code in the wrong layer — push the call up to a handler/state-machine method that can `await`.
+
+### In-memory vs persistent are separate types
+
+`@dataclass` for transfer objects (`CardData`, `_ActiveSession`, `SubmitResult`). `SQLModel(table=True)` for persisted rows. Never mix the two responsibilities in one class. `_ActiveSession` is in-memory; `ConversationSession` is its persistent counterpart — both can exist for the same quiz.
+
+### Dependency injection via constructor, no module-level globals
+
+`main.py` is the composition root — it builds every collaborator once and wires them in. Other modules accept their deps in `__init__` / function args. The only module-level singleton is `src/anki/_lock.py::collection_lock`, because the lock semantics genuinely need to be process-global.
 
 ## Configuration
 
