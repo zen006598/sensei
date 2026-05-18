@@ -6,7 +6,6 @@ import pytest
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.register_classifier import RegisterClassifier
 from src.agent.schemas import JudgeResult, QuizResult
 from src.agent.state_machine import QuizStateMachine
 from src.db.conversation_session_store import ConversationSessionStore
@@ -14,7 +13,7 @@ from src.db.error_record import ErrorRecord
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
-from src.word_service.frequency import FrequencyClassifier
+from src.word_service.word_classifier import WordClassifier
 
 
 def _setup(zipf_fn=lambda w, lang: 5.5):
@@ -42,12 +41,9 @@ def _setup(zipf_fn=lambda w, lang: 5.5):
     syncer = MagicMock()
     syncer.async_sync = AsyncMock()
 
-    frequency = FrequencyClassifier(zipf_fn=zipf_fn)
-    register = RegisterClassifier(agent, anki)
+    classifier = WordClassifier(agent, zipf_fn=zipf_fn)
 
-    sm = QuizStateMachine(
-        anki, syncer, agent, frequency, register, prefs, errors, sessions
-    )
+    sm = QuizStateMachine(anki, syncer, agent, classifier, prefs, errors, sessions)
     return sm, agent, anki, engine, tmp_db
 
 

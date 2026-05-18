@@ -5,7 +5,6 @@ from pathlib import Path
 from sqlmodel import SQLModel, create_engine
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.register_classifier import RegisterClassifier
 from src.agent.state_machine import QuizStateMachine
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
@@ -18,7 +17,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
-from src.word_service.frequency import FrequencyClassifier
+from src.word_service.word_classifier import WordClassifier
 
 
 def main() -> None:
@@ -43,14 +42,12 @@ def main() -> None:
     errors_store = ErrorRecordStore(db_engine)
     sessions_store = ConversationSessionStore(db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
-    frequency = FrequencyClassifier()
-    register = RegisterClassifier(agent, anki_client)
+    classifier = WordClassifier(agent)
     state_machine = QuizStateMachine(
         anki_client,
         anki_syncer,
         agent,
-        frequency,
-        register,
+        classifier,
         prefs_store,
         errors_store,
         sessions_store,
