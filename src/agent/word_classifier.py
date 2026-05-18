@@ -1,5 +1,5 @@
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.tools import WordClassification
+from src.agent.schemas import WordClassification
 from src.anki.client import AnkiClient
 from src.quiz.models import CardData
 

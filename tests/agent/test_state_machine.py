@@ -7,7 +7,7 @@ from sqlmodel import SQLModel, Session, create_engine, select
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
-from src.agent.tools import JudgeResult, QuizResult, WordClassification
+from src.agent.schemas import JudgeResult, QuizResult, WordClassification
 from src.agent.word_classifier import WordClassifier
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record import ErrorRecord

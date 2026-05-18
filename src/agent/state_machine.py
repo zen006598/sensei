@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass, field
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.tools import JudgeResult, QuizResult
+from src.agent.schemas import JudgeResult, QuizResult
 from src.agent.word_classifier import WordClassifier
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer

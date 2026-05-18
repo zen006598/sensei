@@ -1,23 +1,34 @@
+import json
+
 from google import genai
 from google.genai import types
 
-from src.agent.tools import (
-    CLASSIFY_TOOL,
-    JUDGE_TOOL,
-    QUIZ_TOOL,
+from src.agent.schemas import (
+    CLASSIFY_SCHEMA,
+    JUDGE_SCHEMA,
+    QUIZ_SCHEMA,
     JudgeResult,
     QuizResult,
     WordClassification,
 )
 from src.quiz.models import CardData
 
-_ANY = types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="ANY"))
-
 
 class GeminiAgent:
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite"):
         self._client = genai.Client(api_key=api_key)
         self._model = model
+
+    async def _structured(self, prompt: str, schema: types.Schema) -> dict:
+        response = await self._client.aio.models.generate_content(
+            model=self._model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+            ),
+        )
+        return json.loads(response.text)
 
     async def classify_word(self, card: CardData) -> WordClassification:
         """Single Gemini call returning both frequency and register. Falls back to (common, neutral)."""
@@ -26,21 +37,15 @@ class GeminiAgent:
             f"Word: {card.front}\n"
             "frequency: common = everyday usage, rare = infrequent/specialised, obsolete = archaic/no longer used.\n"
             "register: formal = academic/professional, informal = conversational, slang = very casual/street, "
-            "literary = poetic/archaic, neutral = neither formal nor informal.\n"
-            "Use the classify tool."
+            "literary = poetic/archaic, neutral = neither formal nor informal."
         )
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[CLASSIFY_TOOL], tool_config=_ANY),
-        )
-        for part in response.candidates[0].content.parts:
-            if part.function_call and part.function_call.name == "classify":
-                args = part.function_call.args
-                return WordClassification(
-                    frequency=args["frequency"], register=args["register"]
-                )
-        return WordClassification(frequency="common", register="neutral")
+        try:
+            data = await self._structured(prompt, CLASSIFY_SCHEMA)
+            return WordClassification(
+                frequency=data["frequency"], register=data["register"]
+            )
+        except (json.JSONDecodeError, KeyError):
+            return WordClassification(frequency="common", register="neutral")
 
     async def generate_question(
         self,
@@ -88,24 +93,15 @@ class GeminiAgent:
             f"hint = '{register} | ' followed by a one-sentence explanation of the word's meaning, e.g. '{register} | a formal promise or guarantee'.\n"
             f"- sentence: Explicitly state the target word (from card front: '{card.front}') in the question, "
             "then provide at least 2 short scenario descriptions. "
-            "Format the question_text like: 'Use the word \"<word>\" in a sentence for one of these situations:\n1. <scenario A>\n2. <scenario B>'\n"
-            "Use the quiz tool to output the question."
+            "Format the question_text like: 'Use the word \"<word>\" in a sentence for one of these situations:\n1. <scenario A>\n2. <scenario B>'"
         )
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[QUIZ_TOOL], tool_config=_ANY),
+        data = await self._structured(prompt, QUIZ_SCHEMA)
+        return QuizResult(
+            question_type=data["question_type"],
+            question_text=data["question_text"],
+            correct_answer=data["correct_answer"],
+            hint=data.get("hint", ""),
         )
-        for part in response.candidates[0].content.parts:
-            if part.function_call and part.function_call.name == "quiz":
-                args = part.function_call.args
-                return QuizResult(
-                    question_type=args["question_type"],
-                    question_text=args["question_text"],
-                    correct_answer=args["correct_answer"],
-                    hint=args.get("hint", ""),
-                )
-        raise RuntimeError("Agent did not call quiz tool")
 
     async def evaluate_answer(
         self,
@@ -149,24 +145,15 @@ class GeminiAgent:
             "Then optionally a brief hint about the part that's wrong (e.g. 'check the vowel in the middle').\n"
             "  wrong/grammar_error (sentence) → first write the corrected sentence, then list each correction as a bullet:\n"
             "    • 'original' → 'corrected': reason\n"
-            "    Example: • 'negotiation' → 'negotiate': should be a verb after 'help someone'\n"
-            "Use the judge_score tool."
+            "    Example: • 'negotiation' → 'negotiate': should be a verb after 'help someone'"
         )
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[JUDGE_TOOL], tool_config=_ANY),
+        data = await self._structured(prompt, JUDGE_SCHEMA)
+        raw_error_type = data.get("error_type", "")
+        return JudgeResult(
+            outcome=data["outcome"],
+            error_type=raw_error_type if raw_error_type else None,
+            suggestion=data["suggestion"],
         )
-        for part in response.candidates[0].content.parts:
-            if part.function_call and part.function_call.name == "judge_score":
-                args = part.function_call.args
-                raw_error_type = args.get("error_type", "")
-                return JudgeResult(
-                    outcome=args["outcome"],
-                    error_type=raw_error_type if raw_error_type else None,
-                    suggestion=args["suggestion"],
-                )
-        raise RuntimeError("Agent did not call judge_score tool")
 
     async def generate_session_summary(
         self,
