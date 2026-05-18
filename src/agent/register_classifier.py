@@ -2,13 +2,8 @@ from src.agent.gemini_agent import GeminiAgent
 from src.anki.client import AnkiClient
 from src.quiz.models import CardData
 
-_REGISTER_TAGS = {
-    "sensei:formal",
-    "sensei:informal",
-    "sensei:slang",
-    "sensei:literary",
-    "sensei:neutral",
-}
+_TAG_PREFIX = "sensei:"
+_REGISTERS = {"formal", "informal", "slang", "literary", "neutral"}
 
 
 class RegisterClassifier:
@@ -19,15 +14,14 @@ class RegisterClassifier:
         self._anki = anki
 
     async def classify(self, card: CardData) -> str:
-        cached = next(
-            (t.removeprefix("sensei:") for t in card.tags if t in _REGISTER_TAGS),
-            None,
-        )
-        if cached:
-            return cached
+        for tag in card.tags:
+            if tag.startswith(_TAG_PREFIX):
+                value = tag.removeprefix(_TAG_PREFIX)
+                if value in _REGISTERS:
+                    return value
 
         register = await self._agent.classify_register(card)
-        tag = f"sensei:{register}"
+        tag = f"{_TAG_PREFIX}{register}"
         await self._anki.update_card_tags(card.card_id, [tag])
         card.tags.append(tag)
         return register
