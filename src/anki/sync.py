@@ -9,6 +9,8 @@ import zstandard
 from anki.collection import Collection
 from anki.sync import SyncAuth
 
+from src.anki._lock import collection_lock
+
 
 @dataclass
 class SyncResult:
@@ -62,8 +64,9 @@ class AnkiSyncer:
                 pass
 
     async def async_sync(self) -> SyncResult:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.sync)
+        async with collection_lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self.sync)
 
 
 def _extract_new_endpoint(sync_response) -> str:

@@ -71,10 +71,10 @@ class QuizStateMachine:
         return self._active.current_question if self._active else None
 
     async def get_due_count(self) -> int:
-        return await self._run_anki(self._anki.get_due_count)
+        return await self._anki.get_due_count()
 
     async def get_deck_names(self) -> list[str]:
-        return await self._run_anki(self._anki.get_deck_names)
+        return await self._anki.get_deck_names()
 
     async def start(self, user_id: int) -> QuizResult | None:
         self._user_id = user_id
@@ -87,7 +87,7 @@ class QuizStateMachine:
             return
         session = self._active
         self._active = None
-        await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
+        await self._anki.answer_card(session.card.card_id, 1)
         self._sessions.finalize(
             session.db_session_id,
             outcome="skipped",
@@ -105,7 +105,7 @@ class QuizStateMachine:
             recent_errors,
         )
         self._sessions.set_summary(session.db_session_id, summary)
-        await self._locked_sync()
+        await self._syncer.async_sync()
 
     async def discard_current(self) -> None:
         """Mark current card as Again (ease 1) without a summary; sync in background."""
@@ -113,23 +113,18 @@ class QuizStateMachine:
             return
         session = self._active
         self._active = None
-        await self._run_anki(self._anki.answer_card, session.card.card_id, 1)
+        await self._anki.answer_card(session.card.card_id, 1)
         self._sessions.finalize(
             session.db_session_id,
             outcome="skipped",
             messages=json.dumps(session.messages),
             attempt_count=session.attempt_count,
         )
-        asyncio.create_task(self._locked_sync())
+        asyncio.create_task(self._syncer.async_sync())
 
     async def start_next(self) -> QuizResult | None:
         """Pick the next due card and generate its first question."""
         return await self._auto_start()
-
-    async def _locked_sync(self) -> None:
-        async with AnkiClient._collection_lock:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._syncer.sync)
 
     async def stop(self) -> int:
         return await self._end_session("stopped")
@@ -296,7 +291,7 @@ class QuizStateMachine:
     async def _auto_start(self) -> QuizResult | None:
         deck = self._prefs.get_deck(self._user_id)
         mode = self._prefs.get_mode(self._user_id)
-        cards = await self._run_anki(self._anki.get_due_cards, 1, deck, mode)
+        cards = await self._anki.get_due_cards(limit=1, deck=deck, mode=mode)
         if not cards:
             return None
         return await self._begin_card(cards[0])
@@ -351,7 +346,7 @@ class QuizStateMachine:
             ease = 4 if session.attempt_count == 1 else 3
         else:
             ease = 1
-        await self._run_anki(self._anki.answer_card, session.card.card_id, ease)
+        await self._anki.answer_card(session.card.card_id, ease)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
         summary = await self._agent.generate_session_summary(
             session.card.front,
@@ -375,7 +370,7 @@ class QuizStateMachine:
             return existing.pop().removeprefix("sensei:")
         frequency = await self._agent.classify_word_frequency(card)
         tag = f"sensei:{frequency}"
-        await self._run_anki(self._anki.update_card_tags, card.card_id, [tag])
+        await self._anki.update_card_tags(card.card_id, [tag])
         card.tags.append(tag)
         return frequency
 
@@ -385,11 +380,6 @@ class QuizStateMachine:
             return existing.pop().removeprefix("sensei:")
         register = await self._agent.classify_word_register(card)
         tag = f"sensei:{register}"
-        await self._run_anki(self._anki.update_card_tags, card.card_id, [tag])
+        await self._anki.update_card_tags(card.card_id, [tag])
         card.tags.append(tag)
         return register
-
-    async def _run_anki(self, fn, *args):
-        async with AnkiClient._collection_lock:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, fn, *args)

@@ -28,13 +28,15 @@ def _setup():
 
     agent = MagicMock(spec=GeminiAgent)
     anki = MagicMock()
-    anki.get_due_cards = MagicMock(
+    anki.get_due_cards = AsyncMock(
         return_value=[
             CardData(card_id=1, front="run", back="走る", tags=[], deck_name="EN")
         ]
     )
-    anki.answer_card = MagicMock()
-    anki.update_card_tags = MagicMock()
+    anki.answer_card = AsyncMock()
+    anki.update_card_tags = AsyncMock()
+    anki.get_due_count = AsyncMock(return_value=0)
+    anki.get_deck_names = AsyncMock(return_value=[])
 
     syncer = MagicMock()
     syncer.async_sync = AsyncMock()
