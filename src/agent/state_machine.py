@@ -71,20 +71,8 @@ class QuizStateMachine:
     def get_current_question(self) -> QuizResult | None:
         return self._active.current_question if self._active else None
 
-    def get_due_count_sync(self) -> int:
-        return self._anki.get_due_count()
-
-    def set_deck(self, user_id: int, deck_name: str | None) -> None:
-        self._prefs.set_deck(user_id, deck_name)
-
-    def get_deck(self, user_id: int) -> str | None:
-        return self._prefs.get_deck(user_id)
-
-    def set_mode(self, user_id: int, mode: str) -> None:
-        self._prefs.set_mode(user_id, mode)
-
-    def get_mode(self, user_id: int) -> str:
-        return self._prefs.get_mode(user_id)
+    async def get_due_count(self) -> int:
+        return await self._run_anki(self._anki.get_due_count)
 
     async def get_deck_names(self) -> list[str]:
         return await self._run_anki(self._anki.get_deck_names)
@@ -360,7 +348,7 @@ class QuizStateMachine:
 
     async def _end_session(self, outcome: str) -> int:
         if not self._active:
-            return await self._run_anki(self._anki.get_due_count)
+            return await self.get_due_count()
         session = self._active
         self._active = None
         if outcome == "perfect":
@@ -383,7 +371,7 @@ class QuizStateMachine:
             attempt_count=session.attempt_count,
         )
         await self._syncer.async_sync()
-        return await self._run_anki(self._anki.get_due_count)
+        return await self.get_due_count()
 
     async def _get_or_classify_frequency(self, card: CardData) -> str:
         existing = {t for t in card.tags if t in _SENSEI_FREQ_TAGS}

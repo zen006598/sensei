@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 from src.agent.state_machine import QuizStateMachine
 from src.anki.sync import AnkiSyncer
+from src.db.user_prefs_store import UserPrefsStore
 from src.bot.keyboards import (
     deck_list_keyboard,
     mode_keyboard,
@@ -24,7 +25,9 @@ _OUTCOME_LABEL = {
 }
 
 
-def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
+def make_handlers(
+    sm: QuizStateMachine, syncer: AnkiSyncer, prefs: UserPrefsStore
+) -> dict:
     _HELP_TEXT = (
         "Commands:\n"
         "/quiz — Start a review session\n"
@@ -45,7 +48,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
     async def status_command(
         update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        count = sm.get_due_count_sync()
+        count = await sm.get_due_count()
         await update.message.reply_text(f"{count} card(s) due for review.")
 
     async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -199,7 +202,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
     async def decks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         deck_names = await sm.get_deck_names()
         user_id = update.effective_user.id
-        current = sm.get_deck(user_id)
+        current = prefs.get_deck(user_id)
         header = f"Select a deck\nCurrent: {current or 'All decks'}"
         await update.message.reply_text(
             header, reply_markup=deck_list_keyboard(deck_names)
@@ -212,13 +215,13 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.answer()
         user_id = update.effective_user.id
         deck_name = query.data.removeprefix("deck_select:") or None
-        sm.set_deck(user_id, deck_name)
+        prefs.set_deck(user_id, deck_name)
         label = deck_name if deck_name else "All decks"
         await query.edit_message_text(f"Deck set to: {label}\nUse /quiz to start.")
 
     async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.effective_user.id
-        current = sm.get_mode(user_id)
+        current = prefs.get_mode(user_id)
         await update.message.reply_text(
             f"Select card mode\nCurrent: {current}",
             reply_markup=mode_keyboard(current),
@@ -231,7 +234,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         await query.answer()
         user_id = update.effective_user.id
         mode = query.data.removeprefix("mode_select:")
-        sm.set_mode(user_id, mode)
+        prefs.set_mode(user_id, mode)
         await query.edit_message_text(
             f"Mode set to: {mode}\nUse /quiz to start.",
         )
@@ -248,7 +251,7 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
             chat_id=update.effective_chat.id, action="typing"
         )
         result = await syncer.async_sync()
-        due = sm.get_due_count_sync()
+        due = await sm.get_due_count()
         if result.success:
             await update.message.reply_text(f"Synced\n{due} card(s) remaining")
         else:
@@ -258,14 +261,14 @@ def make_handlers(sm: QuizStateMachine, syncer: AnkiSyncer) -> dict:
         query = update.callback_query
         await query.answer()
         result = await syncer.async_sync()
-        due = sm.get_due_count_sync()
+        due = await sm.get_due_count()
         if result.success:
             await query.edit_message_text(f"Synced\n{due} card(s) remaining")
         else:
             await query.edit_message_text(f"Sync failed: {result.message}")
 
     async def send_due_notification(context: ContextTypes.DEFAULT_TYPE) -> None:
-        count = sm.get_due_count_sync()
+        count = await sm.get_due_count()
         if count > 0:
             await context.bot.send_message(
                 chat_id=context.job.chat_id,
