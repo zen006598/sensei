@@ -60,17 +60,13 @@ JUDGE_SCHEMA = types.Schema(
     required=["outcome", "suggestion"],
 )
 
-CLASSIFY_SCHEMA = types.Schema(
+REGISTER_SCHEMA = types.Schema(
     type=types.Type.OBJECT,
     properties={
-        "frequency": types.Schema(
-            type=types.Type.STRING,
-            enum=["common", "rare", "obsolete"],
-        ),
         "register": types.Schema(
             type=types.Type.STRING,
             enum=["formal", "informal", "slang", "literary", "neutral"],
         ),
     },
-    required=["frequency", "register"],
+    required=["register"],
 )

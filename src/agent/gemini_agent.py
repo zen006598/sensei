@@ -4,12 +4,11 @@ from google import genai
 from google.genai import types
 
 from src.agent.schemas import (
-    CLASSIFY_SCHEMA,
     JUDGE_SCHEMA,
     QUIZ_SCHEMA,
+    REGISTER_SCHEMA,
     JudgeResult,
     QuizResult,
-    WordClassification,
 )
 from src.quiz.models import CardData
 
@@ -30,22 +29,19 @@ class GeminiAgent:
         )
         return json.loads(response.text)
 
-    async def classify_word(self, card: CardData) -> WordClassification:
-        """Single Gemini call returning both frequency and register. Falls back to (common, neutral)."""
+    async def classify_register(self, card: CardData) -> str:
+        """Returns the formality register. Falls back to 'neutral' on parse failure."""
         prompt = (
-            "Classify this vocabulary item for a language learner.\n"
+            "Classify the formality register of this vocabulary item for a language learner.\n"
             f"Word: {card.front}\n"
-            "frequency: common = everyday usage, rare = infrequent/specialised, obsolete = archaic/no longer used.\n"
-            "register: formal = academic/professional, informal = conversational, slang = very casual/street, "
+            "formal = academic/professional, informal = conversational, slang = very casual/street, "
             "literary = poetic/archaic, neutral = neither formal nor informal."
         )
         try:
-            data = await self._structured(prompt, CLASSIFY_SCHEMA)
-            return WordClassification(
-                frequency=data["frequency"], register=data["register"]
-            )
+            data = await self._structured(prompt, REGISTER_SCHEMA)
+            return data["register"]
         except (json.JSONDecodeError, KeyError):
-            return WordClassification(frequency="common", register="neutral")
+            return "neutral"
 
     async def generate_question(
         self,
