@@ -7,7 +7,9 @@ from src.anki.card_data import CardData
 from src.word_service._awl_data import _AWL_WORDS
 
 TAG_PREFIX = "sensei:"
-_REGISTERS = {"formal", "informal", "slang", "literary", "neutral"}
+FREQUENCIES = frozenset({"common", "rare", "obsolete"})
+REGISTERS = frozenset({"formal", "informal", "slang", "literary", "neutral"})
+ACADEMICS = frozenset({"academic"})  # only the positive case is tagged
 
 
 def _bucket(zipf: float) -> str:
@@ -26,12 +28,15 @@ def _bucket(zipf: float) -> str:
 
 
 class WordClassifier:
-    """Pure word classification — no I/O writes, no mutation of inputs.
+    """Pure word-classification services. No cache check, no I/O writes, no mutation of inputs.
 
-    `frequency` is a local wordfreq lookup. `register` checks the card's
-    existing sensei: tags first; on miss it calls Gemini and returns the
-    result without persisting. The caller is responsible for writing the
-    cache tag back to Anki.
+    Three independent axes:
+    - `frequency(word)`: local wordfreq lookup, returns common/rare/obsolete.
+    - `is_academic(word)`: local Academic Word List membership.
+    - `register(card)`: forwards to the Gemini agent; returns None on failure
+      (the agent logs the exception).
+
+    Cache reads/writes against Anki tags belong to the caller (QuizStateMachine).
     """
 
     def __init__(
@@ -50,11 +55,6 @@ class WordClassifier:
         """True if the word belongs to Coxhead's Academic Word List. Sub-ms, no I/O."""
         return word.lower() in _AWL_WORDS
 
-    async def register(self, card: CardData) -> str:
-        """Returns the formality register. Reads cached value from card.tags if present, otherwise calls Gemini. Does NOT persist."""
-        for tag in card.tags:
-            if tag.startswith(TAG_PREFIX):
-                value = tag.removeprefix(TAG_PREFIX)
-                if value in _REGISTERS:
-                    return value
+    async def register(self, card: CardData) -> str | None:
+        """Returns the formality register, or None on LLM failure (logged inside the agent)."""
         return await self._agent.classify_register(card)

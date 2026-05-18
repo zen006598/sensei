@@ -1,4 +1,5 @@
 import json
+import logging
 
 from google import genai
 from google.genai import types
@@ -11,6 +12,8 @@ from src.agent.schemas import (
     QuizResult,
 )
 from src.anki.card_data import CardData
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiAgent:
@@ -37,8 +40,8 @@ class GeminiAgent:
         )
         return json.loads(response.text)
 
-    async def classify_register(self, card: CardData) -> str:
-        """Returns the formality register. Falls back to 'neutral' on parse failure."""
+    async def classify_register(self, card: CardData) -> str | None:
+        """Returns the formality register, or None if the call/parse fails. Errors are logged, not raised — caller decides how to handle absence."""
         prompt = (
             "Classify the formality register of this vocabulary item for a language learner.\n"
             f"Word: {card.front}\n"
@@ -50,8 +53,14 @@ class GeminiAgent:
                 prompt, REGISTER_SCHEMA, model=self._classify_model
             )
             return data["register"]
-        except (json.JSONDecodeError, KeyError):
-            return "neutral"
+        except Exception:
+            logger.warning(
+                "classify_register failed for card %s (front=%r); skipping",
+                card.card_id,
+                card.front,
+                exc_info=True,
+            )
+            return None
 
     async def generate_question(
         self,
@@ -61,7 +70,7 @@ class GeminiAgent:
         recent_errors: list[str],
         conversation_summary: str | None,
         forced_type: str | None = None,
-        register: str = "neutral",
+        register: str | None = None,
     ) -> QuizResult:
         if forced_type:
             type_instruction = f"You MUST generate a '{forced_type}' question. No other type is allowed."
@@ -87,6 +96,17 @@ class GeminiAgent:
             )
         context = "\n".join(context_lines)
 
+        if register:
+            fill_in_blank_hint = (
+                f"hint = '{register} | ' followed by a one-sentence explanation of the word's meaning, "
+                f"e.g. '{register} | a formal promise or guarantee'."
+            )
+        else:
+            fill_in_blank_hint = (
+                "hint = a one-sentence explanation of the word's meaning, "
+                "e.g. 'a formal promise or guarantee'."
+            )
+
         prompt = (
             "You are a language learning quiz generator.\n"
             f"Card front: {card.front}\nCard back: {card.back}\nTags: {', '.join(card.tags)}\n"
@@ -95,8 +115,8 @@ class GeminiAgent:
             "Question type rules:\n"
             "- spelling: Give the word's meaning/definition as the question (e.g. 'What word means \"to move quickly on foot\"?'). "
             "Do NOT just say 'Spell: {word}'. The learner must recall and spell the word from its definition.\n"
-            f"- fill_in_blank: question_text MUST be a complete sentence with the target word replaced by '___' (e.g. 'She made a solemn ___ to keep her word.'). "
-            f"hint = '{register} | ' followed by a one-sentence explanation of the word's meaning, e.g. '{register} | a formal promise or guarantee'.\n"
+            "- fill_in_blank: question_text MUST be a complete sentence with the target word replaced by '___' (e.g. 'She made a solemn ___ to keep her word.'). "
+            f"{fill_in_blank_hint}\n"
             f"- sentence: Explicitly state the target word (from card front: '{card.front}') in the question, "
             "then provide at least 2 short scenario descriptions. "
             "Format the question_text like: 'Use the word \"<word>\" in a sentence for one of these situations:\n1. <scenario A>\n2. <scenario B>'"
