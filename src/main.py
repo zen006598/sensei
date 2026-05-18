@@ -41,7 +41,11 @@ def main() -> None:
     prefs_store = UserPrefsStore(db_engine)
     errors_store = ErrorRecordStore(db_engine)
     sessions_store = ConversationSessionStore(db_engine)
-    agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
+    agent = GeminiAgent(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
+        classify_model=settings.gemini_classify_model,
+    )
     classifier = WordClassifier(agent)
     state_machine = QuizStateMachine(
         anki_client,

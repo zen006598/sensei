@@ -14,13 +14,21 @@ from src.quiz.models import CardData
 
 
 class GeminiAgent:
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-2.5-flash-lite",
+        classify_model: str = "gemini-3-flash-lite",
+    ):
         self._client = genai.Client(api_key=api_key)
         self._model = model
+        self._classify_model = classify_model
 
-    async def _structured(self, prompt: str, schema: types.Schema) -> dict:
+    async def _structured(
+        self, prompt: str, schema: types.Schema, model: str | None = None
+    ) -> dict:
         response = await self._client.aio.models.generate_content(
-            model=self._model,
+            model=model or self._model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -38,7 +46,9 @@ class GeminiAgent:
             "literary = poetic/archaic, neutral = neither formal nor informal."
         )
         try:
-            data = await self._structured(prompt, REGISTER_SCHEMA)
+            data = await self._structured(
+                prompt, REGISTER_SCHEMA, model=self._classify_model
+            )
             return data["register"]
         except (json.JSONDecodeError, KeyError):
             return "neutral"

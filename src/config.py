@@ -15,6 +15,7 @@ class Settings:
     db_path: str
     gemini_api_key: str
     gemini_model: str
+    gemini_classify_model: str
     gemini_timeout_seconds: int
     scheduler_daily_hour: int
     max_cards_per_session: int
@@ -46,6 +47,9 @@ def load_settings() -> Settings:
         db_path=os.environ.get("DB_PATH", "./data/sensei.db"),
         gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+        gemini_classify_model=os.environ.get(
+            "GEMINI_CLASSIFY_MODEL", "gemini-3-flash-lite"
+        ),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
         scheduler_daily_hour=int(os.environ.get("SCHEDULER_DAILY_HOUR", "8")),
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
