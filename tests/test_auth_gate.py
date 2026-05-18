@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from telegram.ext import ApplicationHandlerStop
 
-from src.main import _make_auth_gate
+from src.bot.app import _make_auth_gate
 
 
 async def test_allows_listed_user():
