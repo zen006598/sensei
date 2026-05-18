@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.agent.state_machine import QuizStateMachine
+from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.db.user_prefs_store import UserPrefsStore
 from src.bot.keyboards import (
@@ -26,7 +27,10 @@ _OUTCOME_LABEL = {
 
 
 def make_handlers(
-    sm: QuizStateMachine, syncer: AnkiSyncer, prefs: UserPrefsStore
+    sm: QuizStateMachine,
+    syncer: AnkiSyncer,
+    anki: AnkiClient,
+    prefs: UserPrefsStore,
 ) -> dict:
     _HELP_TEXT = (
         "Commands:\n"
@@ -48,7 +52,7 @@ def make_handlers(
     async def status_command(
         update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        count = await sm.get_due_count()
+        count = await anki.get_due_count()
         await update.message.reply_text(f"{count} card(s) due for review.")
 
     async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -200,7 +204,7 @@ def make_handlers(
         )
 
     async def decks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        deck_names = await sm.get_deck_names()
+        deck_names = await anki.get_deck_names()
         user_id = update.effective_user.id
         current = prefs.get_deck(user_id)
         header = f"Select a deck\nCurrent: {current or 'All decks'}"
@@ -251,7 +255,7 @@ def make_handlers(
             chat_id=update.effective_chat.id, action="typing"
         )
         result = await syncer.async_sync()
-        due = await sm.get_due_count()
+        due = await anki.get_due_count()
         if result.success:
             await update.message.reply_text(f"Synced\n{due} card(s) remaining")
         else:
@@ -261,14 +265,14 @@ def make_handlers(
         query = update.callback_query
         await query.answer()
         result = await syncer.async_sync()
-        due = await sm.get_due_count()
+        due = await anki.get_due_count()
         if result.success:
             await query.edit_message_text(f"Synced\n{due} card(s) remaining")
         else:
             await query.edit_message_text(f"Sync failed: {result.message}")
 
     async def send_due_notification(context: ContextTypes.DEFAULT_TYPE) -> None:
-        count = await sm.get_due_count()
+        count = await anki.get_due_count()
         if count > 0:
             await context.bot.send_message(
                 chat_id=context.job.chat_id,

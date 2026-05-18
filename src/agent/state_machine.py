@@ -64,12 +64,6 @@ class QuizStateMachine:
     def get_current_question(self) -> QuizResult | None:
         return self._active.current_question if self._active else None
 
-    async def get_due_count(self) -> int:
-        return await self._anki.get_due_count()
-
-    async def get_deck_names(self) -> list[str]:
-        return await self._anki.get_deck_names()
-
     async def start(self, user_id: int) -> QuizResult | None:
         self._user_id = user_id
         await self._syncer.async_sync()
@@ -333,7 +327,7 @@ class QuizStateMachine:
 
     async def _end_session(self, outcome: str) -> int:
         if not self._active:
-            return await self.get_due_count()
+            return await self._anki.get_due_count()
         session = self._active
         self._active = None
         if outcome == "perfect":
@@ -356,4 +350,4 @@ class QuizStateMachine:
             attempt_count=session.attempt_count,
         )
         await self._syncer.async_sync()
-        return await self.get_due_count()
+        return await self._anki.get_due_count()

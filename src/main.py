@@ -82,7 +82,7 @@ def main() -> None:
         sessions_store,
     )
 
-    handlers = make_handlers(state_machine, anki_syncer, prefs_store)
+    handlers = make_handlers(state_machine, anki_syncer, anki_client, prefs_store)
 
     app = (
         Application.builder()
