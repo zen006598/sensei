@@ -1,12 +1,17 @@
-import tempfile
 import os
+import tempfile
+
+from sqlmodel import SQLModel, create_engine
+
 from src.db.user_prefs_store import UserPrefsStore
 
 
 def _store():
     fd, tmp = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    return UserPrefsStore(tmp), tmp
+    engine = create_engine(f"sqlite:///{tmp}")
+    SQLModel.metadata.create_all(engine)
+    return UserPrefsStore(engine), tmp
 
 
 def test_get_deck_returns_none_for_unknown_user():

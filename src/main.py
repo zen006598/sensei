@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from sqlmodel import SQLModel, create_engine
 from telegram import BotCommand
@@ -58,6 +59,7 @@ def main() -> None:
     )
     logging.getLogger("google_genai").setLevel(logging.WARNING)
 
+    Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
     db_engine = create_engine(f"sqlite:///{settings.db_path}")
     SQLModel.metadata.create_all(db_engine)
 
@@ -67,7 +69,7 @@ def main() -> None:
         settings.ankiweb_email,
         settings.ankiweb_password,
     )
-    prefs_store = UserPrefsStore(settings.db_path, engine=db_engine)
+    prefs_store = UserPrefsStore(db_engine)
     errors_store = ErrorRecordStore(db_engine)
     sessions_store = ConversationSessionStore(db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
