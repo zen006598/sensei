@@ -3,7 +3,7 @@ from typing import Callable
 from wordfreq import zipf_frequency
 
 from src.agent.gemini_agent import GeminiAgent
-from src.quiz.models import CardData
+from src.anki.card_data import CardData
 
 TAG_PREFIX = "sensei:"
 _REGISTERS = {"formal", "informal", "slang", "literary", "neutral"}

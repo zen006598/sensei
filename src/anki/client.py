@@ -6,7 +6,7 @@ from anki.collection import Collection
 from bs4 import BeautifulSoup
 
 from src.anki._lock import collection_lock
-from src.quiz.models import CardData
+from src.anki.card_data import CardData
 
 
 class AnkiClient:

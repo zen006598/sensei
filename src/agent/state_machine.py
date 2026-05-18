@@ -9,7 +9,7 @@ from src.anki.sync import AnkiSyncer
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
-from src.quiz.models import CardData
+from src.anki.card_data import CardData
 from src.word_service.word_classifier import TAG_PREFIX, WordClassifier
 
 

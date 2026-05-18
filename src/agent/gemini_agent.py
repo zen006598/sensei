@@ -10,7 +10,7 @@ from src.agent.schemas import (
     JudgeResult,
     QuizResult,
 )
-from src.quiz.models import CardData
+from src.anki.card_data import CardData
 
 
 class GeminiAgent:

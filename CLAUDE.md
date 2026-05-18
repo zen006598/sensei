@@ -44,7 +44,7 @@ The bot is a four-layer pipeline. Each `/quiz` message flows: Telegram → `bot/
 - **`src/anki/sync.py`** — `AnkiSyncer`: talks to AnkiWeb via the `anki` package's internal sync API. `async_sync()` also takes the shared lock (closes the race between a background `_summarize_and_sync` and a foreground `/quiz`). Full-download responses go through a **local HTTP proxy** (`_full_download_via_proxy`) that re-compresses zstd payloads with a content size header — workaround for an Anki Rust-backend bug. Don't remove this proxy without verifying full sync still works.
 - **`src/anki/_lock.py`** — single shared `collection_lock = asyncio.Lock()`. Both `AnkiClient` and `AnkiSyncer` import it so every `Collection(path)` open serialises globally.
 - **`src/db/`** — one file per class, file name = class name (snake_case). SQLModel tables: `conversation_session.py`, `error_record.py`, `user_prefs.py`. Stores: `conversation_session_store.py`, `error_record_store.py`, `user_prefs_store.py`. Every store's `__init__` takes a single `Engine`. The state machine never touches `Session(engine)` directly.
-- **`src/quiz/models.py`** — pure `@dataclass` DTOs (`CardData`). In-memory transfer only, never persisted.
+- **`src/anki/card_data.py`** — `CardData` `@dataclass` DTO returned by `AnkiClient`. In-memory transfer only, never persisted.
 
 ### Quiz flow (the part that's not obvious from the code)
 
