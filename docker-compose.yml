@@ -13,7 +13,7 @@ services:
       - MAX_CARDS_PER_SESSION=20
       - GEMINI_TIMEOUT=30
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
-      - PREFS_DB_PATH=/data/db/sensei.db
+      - DB_PATH=/data/db/sensei.db
       - LOG_LEVEL=ERROR
     deploy:
       resources:

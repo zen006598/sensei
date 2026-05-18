@@ -60,7 +60,7 @@ All config flows through `src/config.py` → `Settings` dataclass, loaded from e
 
 Required: `TELEGRAM_TOKEN`, `ANKIWEB_EMAIL`, `ANKIWEB_PASSWORD`, `GEMINI_API_KEY`.
 
-Common optional: `GEMINI_MODEL` (default `gemini-2.5-flash-lite`), `ANKI_COLLECTION_PATH` (default `./data/anki/collection.anki2`), `PREFS_DB_PATH` (default `./data/sensei.db`), `ALLOWED_USER_IDS` (comma-separated; empty = allow all), `LOG_LEVEL` (default `INFO` locally, `ERROR` in production via compose).
+Common optional: `GEMINI_MODEL` (default `gemini-2.5-flash-lite`), `ANKI_COLLECTION_PATH` (default `./data/anki/collection.anki2`), `DB_PATH` (default `./data/sensei.db`), `ALLOWED_USER_IDS` (comma-separated; empty = allow all), `LOG_LEVEL` (default `INFO` locally, `ERROR` in production via compose).
 
 ## Deployment
 

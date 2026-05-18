@@ -53,7 +53,7 @@ def main() -> None:
     )
     logging.getLogger("google_genai").setLevel(logging.WARNING)
 
-    db_engine = create_engine(f"sqlite:///{settings.prefs_db_path}")
+    db_engine = create_engine(f"sqlite:///{settings.db_path}")
     SQLModel.metadata.create_all(db_engine)
 
     anki_client = AnkiClient(settings.anki_collection_path)
@@ -62,7 +62,7 @@ def main() -> None:
         settings.ankiweb_email,
         settings.ankiweb_password,
     )
-    prefs_store = UserPrefsStore(settings.prefs_db_path, engine=db_engine)
+    prefs_store = UserPrefsStore(settings.db_path, engine=db_engine)
     agent = GeminiAgent(api_key=settings.gemini_api_key, model=settings.gemini_model)
     state_machine = QuizStateMachine(
         anki_client, anki_syncer, agent, prefs_store, db_engine

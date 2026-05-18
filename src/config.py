@@ -12,7 +12,7 @@ class Settings:
     ankiweb_email: str
     ankiweb_password: str
     anki_collection_path: str
-    prefs_db_path: str
+    db_path: str
     gemini_api_key: str
     gemini_model: str
     gemini_timeout_seconds: int
@@ -43,7 +43,7 @@ def load_settings() -> Settings:
         anki_collection_path=os.environ.get(
             "ANKI_COLLECTION_PATH", "./data/anki/collection.anki2"
         ),
-        prefs_db_path=os.environ.get("PREFS_DB_PATH", "./data/sensei.db"),
+        db_path=os.environ.get("DB_PATH", "./data/sensei.db"),
         gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
