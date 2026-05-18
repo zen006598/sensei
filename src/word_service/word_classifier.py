@@ -4,6 +4,7 @@ from wordfreq import zipf_frequency
 
 from src.agent.gemini_agent import GeminiAgent
 from src.anki.card_data import CardData
+from src.word_service._awl_data import _AWL_WORDS
 
 TAG_PREFIX = "sensei:"
 _REGISTERS = {"formal", "informal", "slang", "literary", "neutral"}
@@ -44,6 +45,10 @@ class WordClassifier:
     def frequency(self, word: str) -> str:
         """Returns 'common' | 'rare' | 'obsolete'. Sub-ms, no I/O."""
         return _bucket(self._zipf_fn(word.lower(), "en"))
+
+    def is_academic(self, word: str) -> bool:
+        """True if the word belongs to Coxhead's Academic Word List. Sub-ms, no I/O."""
+        return word.lower() in _AWL_WORDS
 
     async def register(self, card: CardData) -> str:
         """Returns the formality register. Reads cached value from card.tags if present, otherwise calls Gemini. Does NOT persist."""
