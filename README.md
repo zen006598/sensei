@@ -97,9 +97,10 @@ Pushes to `main` trigger `.github/workflows/cd.yml`, which builds the image, pus
 | `ANKIWEB_PASSWORD` | yes | — | AnkiWeb password |
 | `GEMINI_API_KEY` | yes | — | From Google AI Studio |
 | `ALLOWED_USER_IDS` | recommended | empty | Comma-separated Telegram user IDs. Empty means allow anyone — only safe if you do not advertise the bot. |
-| `GEMINI_MODEL` | no | `gemini-2.5-flash-lite` | |
+| `GEMINI_MODEL` | no | `gemini-2.5-flash-lite` | Used for quiz, judge, summary |
+| `GEMINI_CLASSIFY_MODEL` | no | `gemini-3-flash-lite` | Used only for register classification (lighter call) |
 | `ANKI_COLLECTION_PATH` | no | `./data/anki/collection.anki2` | Inside the container it's `/data/anki/collection.anki2` |
-| `PREFS_DB_PATH` | no | `./data/sensei.db` | Inside the container it's `/data/db/sensei.db` |
+| `DB_PATH` | no | `./data/sensei.db` | Inside the container it's `/data/db/sensei.db` |
 | `LOG_LEVEL` | no | `INFO` locally, `ERROR` in compose | |
 
 ## Local development

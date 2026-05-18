@@ -5,12 +5,11 @@ from contextlib import contextmanager
 from anki.collection import Collection
 from bs4 import BeautifulSoup
 
-from src.quiz.models import CardData
+from src.anki._lock import collection_lock
+from src.anki.card_data import CardData
 
 
 class AnkiClient:
-    _collection_lock = asyncio.Lock()
-
     def __init__(self, collection_path: str):
         self._collection_path = collection_path
 
@@ -22,14 +21,24 @@ class AnkiClient:
         finally:
             col.close()
 
-    def get_deck_names(self) -> list[str]:
-        with self._get_collection() as col:
-            return sorted(d["name"] for d in col.decks.all())
+    async def _run_locked(self, fn):
+        async with collection_lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self._with_collection, fn)
 
-    def get_due_cards(
+    def _with_collection(self, fn):
+        with self._get_collection() as col:
+            return fn(col)
+
+    async def get_deck_names(self) -> list[str]:
+        return await self._run_locked(
+            lambda col: sorted(d["name"] for d in col.decks.all())
+        )
+
+    async def get_due_cards(
         self, limit: int = 20, deck: str | None = None, mode: str = "default"
     ) -> list[CardData]:
-        with self._get_collection() as col:
+        def fn(col):
             deck_prefix = f'deck:"{deck}" ' if deck else ""
 
             def _shuffled(filt: str) -> list[int]:
@@ -48,14 +57,18 @@ class AnkiClient:
             cards = [self._card_to_data(col, cid) for cid in card_ids]
             return [c for c in cards if c.front or c.back]
 
-    def answer_card(self, card_id: int, ease: int) -> None:
-        with self._get_collection() as col:
+        return await self._run_locked(fn)
+
+    async def answer_card(self, card_id: int, ease: int) -> None:
+        def fn(col):
             card = col.get_card(card_id)
             card.start_timer()
             col.sched.answerCard(card, ease)
 
-    def update_card_tags(self, card_id: int, tags_to_add: list[str]) -> None:
-        with self._get_collection() as col:
+        await self._run_locked(fn)
+
+    async def update_card_tags(self, card_id: int, tags_to_add: list[str]) -> None:
+        def fn(col):
             card = col.get_card(card_id)
             note = card.note()
             for tag in tags_to_add:
@@ -63,9 +76,10 @@ class AnkiClient:
                     note.tags.append(tag)
             col.update_note(note)
 
-    def get_due_count(self) -> int:
-        with self._get_collection() as col:
-            return len(col.find_cards("is:due"))
+        await self._run_locked(fn)
+
+    async def get_due_count(self) -> int:
+        return await self._run_locked(lambda col: len(col.find_cards("is:due")))
 
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)

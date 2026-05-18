@@ -8,12 +8,13 @@ services:
       - ANKIWEB_PASSWORD=${ANKIWEB_PASSWORD}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      - GEMINI_CLASSIFY_MODEL=${GEMINI_CLASSIFY_MODEL:-gemini-3-flash-lite}
       - ANKI_COLLECTION_PATH=/data/anki/collection.anki2
       - SCHEDULER_DAILY_HOUR=8
       - MAX_CARDS_PER_SESSION=20
       - GEMINI_TIMEOUT=30
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
-      - PREFS_DB_PATH=/data/db/sensei.db
+      - DB_PATH=/data/db/sensei.db
       - LOG_LEVEL=ERROR
     deploy:
       resources:

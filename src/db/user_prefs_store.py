@@ -1,23 +1,12 @@
-from pathlib import Path
-
 from sqlalchemy.engine import Engine
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Session
 
-
-class UserPrefs(SQLModel, table=True):
-    user_id: int = Field(primary_key=True)
-    selected_deck: str | None = None
-    quiz_mode: str = "default"  # "default" | "due" | "new"
+from src.db.user_prefs import UserPrefs
 
 
 class UserPrefsStore:
-    def __init__(self, db_path: str, engine: Engine | None = None):
-        if engine is not None:
-            self._engine = engine
-        else:
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._engine = create_engine(f"sqlite:///{db_path}")
-            SQLModel.metadata.create_all(self._engine)
+    def __init__(self, engine: Engine):
+        self._engine = engine
 
     def _get_or_create(self, session: Session, user_id: int) -> UserPrefs:
         prefs = session.get(UserPrefs, user_id)
