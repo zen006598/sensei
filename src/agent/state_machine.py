@@ -10,7 +10,7 @@ from src.agent.tools import JudgeResult, QuizResult
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.db.conversation_session import ConversationSession
-from src.db.error_record import ErrorRecord
+from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
 
@@ -55,12 +55,14 @@ class QuizStateMachine:
         anki_syncer: AnkiSyncer,
         agent: GeminiAgent,
         prefs_store: UserPrefsStore,
+        errors_store: ErrorRecordStore,
         db_engine,
     ):
         self._anki = anki_client
         self._syncer = anki_syncer
         self._agent = agent
         self._prefs = prefs_store
+        self._errors = errors_store
         self._engine = db_engine
         self._active: _ActiveSession | None = None
         self._user_id: int = 0
@@ -98,7 +100,7 @@ class QuizStateMachine:
         asyncio.create_task(self._summarize_and_sync(session))
 
     async def _summarize_and_sync(self, session: _ActiveSession) -> None:
-        recent_errors = self._get_recent_errors(session.card.card_id)
+        recent_errors = self._errors.recent_for_card(session.card.card_id)
         summary = await self._agent.generate_session_summary(
             session.card.front,
             session.card.back,
@@ -248,7 +250,7 @@ class QuizStateMachine:
             )
 
         if judge.outcome == "grammar_error":
-            self._record_error(card_id, "grammar", session.messages[-1])
+            self._errors.record(card_id, "grammar", session.messages[-1])
             new_q = await self._next_question(session, forced_type="sentence")
             return SubmitResult(
                 outcome="grammar_error",
@@ -262,7 +264,7 @@ class QuizStateMachine:
             )
 
         if judge.outcome == "vocab_error":
-            self._record_error(card_id, "vocabulary", session.messages[-1])
+            self._errors.record(card_id, "vocabulary", session.messages[-1])
             new_q = await self._next_question(session, forced_type="spelling")
             return SubmitResult(
                 outcome="vocab_error",
@@ -276,7 +278,7 @@ class QuizStateMachine:
             )
 
         # "wrong"
-        self._record_error(card_id, "spelling", session.messages[-1])
+        self._errors.record(card_id, "spelling", session.messages[-1])
         new_q = await self._next_question(session, forced_type=question.question_type)
         return SubmitResult(
             outcome="wrong",
@@ -308,7 +310,7 @@ class QuizStateMachine:
     async def _begin_card(self, card: CardData) -> QuizResult:
         frequency = await self._get_or_classify_frequency(card)
         register = await self._get_or_classify_register(card)
-        recent_errors = self._get_recent_errors(card.card_id)
+        recent_errors = self._errors.recent_for_card(card.card_id)
         last_summary = self._get_last_summary(card.card_id)
         question = await self._agent.generate_question(
             card,
@@ -332,7 +334,7 @@ class QuizStateMachine:
     ) -> QuizResult:
         frequency = await self._get_or_classify_frequency(session.card)
         register = await self._get_or_classify_register(session.card)
-        recent_errors = self._get_recent_errors(session.card.card_id)
+        recent_errors = self._errors.recent_for_card(session.card.card_id)
         last_summary = self._get_last_summary(session.card.card_id)
         question = await self._agent.generate_question(
             session.card,
@@ -356,7 +358,7 @@ class QuizStateMachine:
         else:
             ease = 1
         await self._run_anki(self._anki.answer_card, session.card.card_id, ease)
-        recent_errors = self._get_recent_errors(session.card.card_id)
+        recent_errors = self._errors.recent_for_card(session.card.card_id)
         summary = await self._agent.generate_session_summary(
             session.card.front,
             session.card.back,
@@ -418,25 +420,6 @@ class QuizStateMachine:
                 cs.attempt_count = count
                 s.add(cs)
                 s.commit()
-
-    def _record_error(self, card_id: int, error_type: str, user_answer: str) -> None:
-        with Session(self._engine) as s:
-            s.add(
-                ErrorRecord(
-                    card_id=card_id, error_type=error_type, user_answer=user_answer
-                )
-            )
-            s.commit()
-
-    def _get_recent_errors(self, card_id: int, limit: int = 5) -> list[str]:
-        with Session(self._engine) as s:
-            errors = s.exec(
-                select(ErrorRecord)
-                .where(ErrorRecord.card_id == card_id)
-                .order_by(ErrorRecord.created_at.desc())
-                .limit(limit)
-            ).all()
-        return [f"{e.error_type}: {e.user_answer}" for e in reversed(errors)]
 
     def _get_last_summary(self, card_id: int) -> str | None:
         with Session(self._engine) as s:

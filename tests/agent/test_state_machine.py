@@ -9,6 +9,7 @@ from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.agent.tools import JudgeResult, QuizResult
 from src.db.error_record import ErrorRecord
+from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
 
@@ -21,6 +22,7 @@ def _setup():
     engine = create_engine(f"sqlite:///{tmp_db}")
     SQLModel.metadata.create_all(engine)
     prefs = UserPrefsStore(tmp_prefs)
+    errors = ErrorRecordStore(engine)
 
     agent = MagicMock(spec=GeminiAgent)
     anki = MagicMock()
@@ -35,7 +37,7 @@ def _setup():
     syncer = MagicMock()
     syncer.async_sync = AsyncMock()
 
-    sm = QuizStateMachine(anki, syncer, agent, prefs, engine)
+    sm = QuizStateMachine(anki, syncer, agent, prefs, errors, engine)
     return sm, agent, anki, engine, tmp_db, tmp_prefs
 
 
