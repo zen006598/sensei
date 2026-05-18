@@ -1,6 +1,6 @@
 import tempfile
 import os
-from src.db.prefs import UserPrefsStore
+from src.db.user_prefs_store import UserPrefsStore
 
 
 def _store():

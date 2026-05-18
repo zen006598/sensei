@@ -3,7 +3,8 @@ import tempfile
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.db.models import ConversationSession, ErrorRecord
+from src.db.conversation_session import ConversationSession
+from src.db.error_record import ErrorRecord
 
 
 def _engine():

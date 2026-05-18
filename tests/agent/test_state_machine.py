@@ -8,8 +8,8 @@ from sqlmodel import SQLModel, Session, create_engine, select
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.agent.tools import JudgeResult, QuizResult
-from src.db.models import ErrorRecord
-from src.db.prefs import UserPrefsStore
+from src.db.error_record import ErrorRecord
+from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
 
 

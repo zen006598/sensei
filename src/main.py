@@ -18,8 +18,10 @@ from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.bot.handlers import make_handlers
 from src.config import load_settings
-from src.db.models import ConversationSession, ErrorRecord  # noqa: F401 — ensure tables registered
-from src.db.prefs import UserPrefs, UserPrefsStore  # noqa: F401
+from src.db.conversation_session import ConversationSession  # noqa: F401 — ensure table registered
+from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table registered
+from src.db.user_prefs_store import UserPrefsStore
+from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
 
 _BOT_COMMANDS = [
     BotCommand("quiz", "Start a review session"),

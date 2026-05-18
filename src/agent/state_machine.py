@@ -9,8 +9,9 @@ from src.agent.gemini_agent import GeminiAgent
 from src.agent.tools import JudgeResult, QuizResult
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
-from src.db.models import ConversationSession, ErrorRecord
-from src.db.prefs import UserPrefsStore
+from src.db.conversation_session import ConversationSession
+from src.db.error_record import ErrorRecord
+from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
 
 _SENSEI_FREQ_TAGS = {"sensei:common", "sensei:rare", "sensei:obsolete"}

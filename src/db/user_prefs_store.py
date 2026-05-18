@@ -1,13 +1,9 @@
 from pathlib import Path
 
 from sqlalchemy.engine import Engine
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
-
-class UserPrefs(SQLModel, table=True):
-    user_id: int = Field(primary_key=True)
-    selected_deck: str | None = None
-    quiz_mode: str = "default"  # "default" | "due" | "new"
+from src.db.user_prefs import UserPrefs
 
 
 class UserPrefsStore:
