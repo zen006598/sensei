@@ -2,12 +2,12 @@ from google import genai
 from google.genai import types
 
 from src.agent.tools import (
-    FREQ_TOOL,
+    CLASSIFY_TOOL,
     JUDGE_TOOL,
     QUIZ_TOOL,
-    REGISTER_TOOL,
     JudgeResult,
     QuizResult,
+    WordClassification,
 )
 from src.quiz.models import CardData
 
@@ -19,42 +19,28 @@ class GeminiAgent:
         self._client = genai.Client(api_key=api_key)
         self._model = model
 
-    async def classify_word_frequency(self, card: CardData) -> str:
-        """Returns 'common', 'rare', or 'obsolete'. Falls back to 'common' on failure."""
+    async def classify_word(self, card: CardData) -> WordClassification:
+        """Single Gemini call returning both frequency and register. Falls back to (common, neutral)."""
         prompt = (
-            f"Classify the usage frequency of this vocabulary item for a language learner:\n"
-            f"Front: {card.front}\nBack: {card.back}\n"
-            "common = everyday usage, rare = infrequent/specialised, obsolete = archaic/no longer used.\n"
-            "Use the classify_frequency tool."
-        )
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[FREQ_TOOL], tool_config=_ANY),
-        )
-        for part in response.candidates[0].content.parts:
-            if part.function_call and part.function_call.name == "classify_frequency":
-                return part.function_call.args["frequency"]
-        return "common"
-
-    async def classify_word_register(self, card: CardData) -> str:
-        """Returns 'formal', 'informal', 'slang', 'literary', or 'neutral'. Falls back to 'neutral' on failure."""
-        prompt = (
-            f"Classify the formality register of this vocabulary item for a language learner:\n"
-            f"Front: {card.front}\nBack: {card.back}\n"
-            "formal = academic/professional, informal = conversational, slang = very casual/street, "
+            "Classify this vocabulary item for a language learner.\n"
+            f"Word: {card.front}\n"
+            "frequency: common = everyday usage, rare = infrequent/specialised, obsolete = archaic/no longer used.\n"
+            "register: formal = academic/professional, informal = conversational, slang = very casual/street, "
             "literary = poetic/archaic, neutral = neither formal nor informal.\n"
-            "Use the classify_register tool."
+            "Use the classify tool."
         )
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=prompt,
-            config=types.GenerateContentConfig(tools=[REGISTER_TOOL], tool_config=_ANY),
+            config=types.GenerateContentConfig(tools=[CLASSIFY_TOOL], tool_config=_ANY),
         )
         for part in response.candidates[0].content.parts:
-            if part.function_call and part.function_call.name == "classify_register":
-                return part.function_call.args["register"]
-        return "neutral"
+            if part.function_call and part.function_call.name == "classify":
+                args = part.function_call.args
+                return WordClassification(
+                    frequency=args["frequency"], register=args["register"]
+                )
+        return WordClassification(frequency="common", register="neutral")
 
     async def generate_question(
         self,

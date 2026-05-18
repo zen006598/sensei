@@ -7,7 +7,7 @@ from sqlmodel import SQLModel, Session, create_engine, select
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
-from src.agent.tools import JudgeResult, QuizResult
+from src.agent.tools import JudgeResult, QuizResult, WordClassification
 from src.agent.word_classifier import WordClassifier
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record import ErrorRecord
@@ -49,7 +49,9 @@ def _setup():
 @pytest.mark.asyncio
 async def test_start_returns_question():
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     agent.generate_question = AsyncMock(
         return_value=QuizResult(
             question_type="spelling", question_text="Spell: run", correct_answer="run"
@@ -68,7 +70,9 @@ async def test_start_returns_question():
 async def test_common_card_spelling_correct_continues_to_sentence():
     """For common cards, spelling correct alone does not end the session — sentence follows."""
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     sentence_q = QuizResult(
         question_type="sentence",
         question_text="Use 'run' in a sentence.",
@@ -105,7 +109,9 @@ async def test_common_card_spelling_correct_continues_to_sentence():
 async def test_common_card_full_mastery_ends_session():
     """Spelling correct + sentence correct → ease 4, session ends."""
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     agent.generate_question = AsyncMock(
         side_effect=[
             QuizResult(
@@ -150,7 +156,9 @@ async def test_common_card_full_mastery_ends_session():
 async def test_rare_card_ends_after_one_correct():
     """Rare/obsolete cards only need one correct fill_in_blank → ease 4 immediately."""
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="rare")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="rare", register="neutral")
+    )
     agent.generate_question = AsyncMock(
         side_effect=[
             QuizResult(
@@ -184,7 +192,9 @@ async def test_rare_card_ends_after_one_correct():
 @pytest.mark.asyncio
 async def test_wrong_answer_session_continues():
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     agent.generate_question = AsyncMock(
         return_value=QuizResult(
             question_type="spelling", question_text="Spell: run", correct_answer="run"
@@ -212,7 +222,9 @@ async def test_wrong_answer_session_continues():
 async def test_wrong_on_sentence_stays_on_sentence():
     """Spelling mistakes inside a sentence answer judge as 'wrong'; retry must stay sentence."""
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     sentence_q = QuizResult(
         question_type="sentence",
         question_text="Use 'busy' in a sentence.",
@@ -249,7 +261,9 @@ async def test_wrong_on_sentence_stays_on_sentence():
 @pytest.mark.asyncio
 async def test_grammar_error_records_and_continues():
     sm, agent, anki, engine, tmp_db = _setup()
-    agent.classify_word_frequency = AsyncMock(return_value="common")
+    agent.classify_word = AsyncMock(
+        return_value=WordClassification(frequency="common", register="neutral")
+    )
     agent.generate_question = AsyncMock(
         return_value=QuizResult(
             question_type="sentence",

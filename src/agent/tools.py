@@ -18,6 +18,12 @@ class JudgeResult:
     suggestion: str
 
 
+@dataclass
+class WordClassification:
+    frequency: str  # "common" | "rare" | "obsolete"
+    register: str  # "formal" | "informal" | "slang" | "literary" | "neutral"
+
+
 QUIZ_TOOL = types.Tool(
     function_declarations=[
         types.FunctionDeclaration(
@@ -70,11 +76,11 @@ JUDGE_TOOL = types.Tool(
     ]
 )
 
-FREQ_TOOL = types.Tool(
+CLASSIFY_TOOL = types.Tool(
     function_declarations=[
         types.FunctionDeclaration(
-            name="classify_frequency",
-            description="Classify how commonly this word/phrase is used",
+            name="classify",
+            description="Classify the word's usage frequency and formality register",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
@@ -82,27 +88,12 @@ FREQ_TOOL = types.Tool(
                         type=types.Type.STRING,
                         enum=["common", "rare", "obsolete"],
                     ),
-                },
-                required=["frequency"],
-            ),
-        )
-    ]
-)
-
-REGISTER_TOOL = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name="classify_register",
-            description="Classify the formality register of this vocabulary item",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
                     "register": types.Schema(
                         type=types.Type.STRING,
                         enum=["formal", "informal", "slang", "literary", "neutral"],
                     ),
                 },
-                required=["register"],
+                required=["frequency", "register"],
             ),
         )
     ]

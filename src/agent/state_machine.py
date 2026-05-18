@@ -285,8 +285,9 @@ class QuizStateMachine:
         return await self._begin_card(cards[0])
 
     async def _begin_card(self, card: CardData) -> QuizResult:
-        frequency = await self._classifier.frequency(card)
-        register = await self._classifier.register(card)
+        classification = await self._classifier.classify(card)
+        frequency = classification.frequency
+        register = classification.register
         recent_errors = self._errors.recent_for_card(card.card_id)
         last_summary = self._sessions.last_summary_for_card(card.card_id)
         question = await self._agent.generate_question(
@@ -309,8 +310,9 @@ class QuizStateMachine:
     async def _next_question(
         self, session: _ActiveSession, forced_type: str | None = None
     ) -> QuizResult:
-        frequency = await self._classifier.frequency(session.card)
-        register = await self._classifier.register(session.card)
+        classification = await self._classifier.classify(session.card)
+        frequency = classification.frequency
+        register = classification.register
         recent_errors = self._errors.recent_for_card(session.card.card_id)
         last_summary = self._sessions.last_summary_for_card(session.card.card_id)
         question = await self._agent.generate_question(

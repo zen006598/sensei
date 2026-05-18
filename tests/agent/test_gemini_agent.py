@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.tools import JudgeResult, QuizResult
+from src.agent.tools import JudgeResult, QuizResult, WordClassification
 from src.quiz.models import CardData
 
 
@@ -25,16 +25,18 @@ def _mock_response(parts):
 
 
 @pytest.mark.asyncio
-async def test_classify_word_frequency():
+async def test_classify_word():
     agent = GeminiAgent(api_key="test")
-    part = _mock_fc("classify_frequency", {"frequency": "common"})
+    part = _mock_fc("classify", {"frequency": "common", "register": "neutral"})
     with patch.object(
         agent._client.aio.models,
         "generate_content",
         new=AsyncMock(return_value=_mock_response([part])),
     ):
-        result = await agent.classify_word_frequency(_card())
-    assert result == "common"
+        result = await agent.classify_word(_card())
+    assert isinstance(result, WordClassification)
+    assert result.frequency == "common"
+    assert result.register == "neutral"
 
 
 @pytest.mark.asyncio
