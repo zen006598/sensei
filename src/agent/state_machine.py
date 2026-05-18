@@ -3,14 +3,15 @@ import json
 from dataclasses import dataclass, field
 
 from src.agent.gemini_agent import GeminiAgent
+from src.agent.register_classifier import RegisterClassifier
 from src.agent.schemas import JudgeResult, QuizResult
-from src.agent.word_classifier import WordClassifier
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.quiz.models import CardData
+from src.word_service.frequency import FrequencyClassifier
 
 
 @dataclass
@@ -43,7 +44,8 @@ class QuizStateMachine:
         anki_client: AnkiClient,
         anki_syncer: AnkiSyncer,
         agent: GeminiAgent,
-        classifier: WordClassifier,
+        frequency: FrequencyClassifier,
+        register: RegisterClassifier,
         prefs_store: UserPrefsStore,
         errors_store: ErrorRecordStore,
         sessions_store: ConversationSessionStore,
@@ -51,7 +53,8 @@ class QuizStateMachine:
         self._anki = anki_client
         self._syncer = anki_syncer
         self._agent = agent
-        self._classifier = classifier
+        self._frequency = frequency
+        self._register = register
         self._prefs = prefs_store
         self._errors = errors_store
         self._sessions = sessions_store
@@ -285,9 +288,8 @@ class QuizStateMachine:
         return await self._begin_card(cards[0])
 
     async def _begin_card(self, card: CardData) -> QuizResult:
-        classification = await self._classifier.classify(card)
-        frequency = classification.frequency
-        register = classification.register
+        frequency = self._frequency.classify(card.front)
+        register = await self._register.classify(card)
         recent_errors = self._errors.recent_for_card(card.card_id)
         last_summary = self._sessions.last_summary_for_card(card.card_id)
         question = await self._agent.generate_question(
@@ -310,9 +312,8 @@ class QuizStateMachine:
     async def _next_question(
         self, session: _ActiveSession, forced_type: str | None = None
     ) -> QuizResult:
-        classification = await self._classifier.classify(session.card)
-        frequency = classification.frequency
-        register = classification.register
+        frequency = self._frequency.classify(session.card.front)
+        register = await self._register.classify(session.card)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
         last_summary = self._sessions.last_summary_for_card(session.card.card_id)
         question = await self._agent.generate_question(

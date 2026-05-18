@@ -18,12 +18,6 @@ class JudgeResult:
     suggestion: str
 
 
-@dataclass
-class WordClassification:
-    frequency: str  # "common" | "rare" | "obsolete"
-    register: str  # "formal" | "informal" | "slang" | "literary" | "neutral"
-
-
 QUIZ_SCHEMA = types.Schema(
     type=types.Type.OBJECT,
     properties={
