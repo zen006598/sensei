@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import get_args
 
 from google import genai
 from google.genai import types
@@ -10,10 +11,13 @@ from src.agent.schemas import (
     REGISTER_SCHEMA,
     JudgeResult,
     QuizResult,
+    Register,
 )
 from src.anki.card_data import CardData
 
 logger = logging.getLogger(__name__)
+
+_REGISTER_VALUES: frozenset[str] = frozenset(get_args(Register))
 
 
 class GeminiAgent:
@@ -40,8 +44,10 @@ class GeminiAgent:
         )
         return json.loads(response.text)
 
-    async def classify_register(self, card: CardData) -> str | None:
-        """Returns the formality register, or None if the call/parse fails. Errors are logged, not raised — caller decides how to handle absence."""
+    async def classify_register(self, card: CardData) -> Register | None:
+        """Returns the formality register, or None if the call/parse fails or
+        the model returned a value outside the schema's enum. Errors are
+        logged, not raised — caller decides how to handle absence."""
         prompt = (
             "Classify the formality register of this vocabulary item for a language learner.\n"
             f"Word: {card.front}\n"
@@ -52,7 +58,6 @@ class GeminiAgent:
             data = await self._structured(
                 prompt, REGISTER_SCHEMA, model=self._classify_model
             )
-            return data["register"]
         except Exception:
             logger.warning(
                 "classify_register failed for card %s (front=%r); skipping",
@@ -61,6 +66,15 @@ class GeminiAgent:
                 exc_info=True,
             )
             return None
+        value = data["register"]
+        if value not in _REGISTER_VALUES:
+            logger.warning(
+                "classify_register got unexpected value %r for card %s; ignoring",
+                value,
+                card.card_id,
+            )
+            return None
+        return value
 
     async def generate_question(
         self,

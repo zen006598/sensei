@@ -3,6 +3,7 @@ from typing import Callable
 from wordfreq import zipf_frequency
 
 from src.agent.gemini_agent import GeminiAgent
+from src.agent.schemas import Register
 from src.anki.card_data import CardData
 from src.word_service._awl_data import _AWL_WORDS
 
@@ -50,6 +51,6 @@ class WordClassifier:
         """True if the word belongs to Coxhead's Academic Word List. Sub-ms, no I/O."""
         return word.lower() in _AWL_WORDS
 
-    async def register(self, card: CardData) -> str | None:
+    async def register(self, card: CardData) -> Register | None:
         """Returns the formality register, or None on LLM failure (logged inside the agent)."""
         return await self._agent.classify_register(card)

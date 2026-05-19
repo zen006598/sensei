@@ -16,7 +16,9 @@ the full design."""
 import asyncio
 import logging
 from dataclasses import dataclass
+from typing import cast, get_args
 
+from src.agent.schemas import Register
 from src.anki.card_data import CardData
 from src.anki.client import AnkiClient
 from src.word_service.word_classifier import WordClassifier
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 TAG_PREFIX = "sensei:"
 FREQUENCIES = frozenset({"common", "rare", "obsolete"})
-REGISTERS = frozenset({"formal", "informal", "slang", "literary", "neutral"})
+REGISTERS: frozenset[str] = frozenset(get_args(Register))
 ACADEMICS = frozenset({"academic"})  # only the positive case is tagged
 
 
@@ -100,7 +102,7 @@ class CardTagger:
             await self._anki.update_card_tags(card.card_id, [tag])
             card.tags.append(tag)
 
-    async def classify(self, card: CardData) -> tuple[str, str | None]:
+    async def classify(self, card: CardData) -> tuple[str, Register | None]:
         """Quiz hot path. Applies all 3 axes if missing.
         Returns (frequency, register). `register` is None if its LLM call failed."""
         await self.classify_local(card)
@@ -110,8 +112,13 @@ class CardTagger:
         assert frequency is not None, "classify_local must leave a frequency tag"
 
         register_delta = await self.classify_register(card)
-        register = self._cached(card, REGISTERS) if not register_delta.failed else None
-        return frequency, register
+        if register_delta.failed:
+            return frequency, None
+        # classify_register guarantees a register tag is present when failed=False,
+        # and _cached only returns values that came from REGISTERS — i.e. Register members.
+        cached_register = self._cached(card, REGISTERS)
+        assert cached_register is not None
+        return frequency, cast("Register", cached_register)
 
     async def classify_local(self, card: CardData) -> LocalDelta:
         """Frequency + academic. No LLM. Idempotent: only writes missing tags.

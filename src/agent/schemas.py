@@ -1,6 +1,10 @@
 from dataclasses import dataclass
+from typing import Literal, get_args
 
 from google.genai import types
+
+
+Register = Literal["formal", "informal", "slang", "literary", "neutral"]
 
 
 @dataclass
@@ -59,7 +63,7 @@ REGISTER_SCHEMA = types.Schema(
     properties={
         "register": types.Schema(
             type=types.Type.STRING,
-            enum=["formal", "informal", "slang", "literary", "neutral"],
+            enum=list(get_args(Register)),
         ),
     },
     required=["register"],

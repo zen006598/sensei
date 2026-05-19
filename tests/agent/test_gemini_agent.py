@@ -32,6 +32,21 @@ async def test_classify_register():
 
 
 @pytest.mark.asyncio
+async def test_classify_register_returns_none_on_unexpected_value():
+    """The schema's enum constrains the LLM, but unexpected values can still slip
+    through on API errors / parse drift. Such values must not propagate."""
+    agent = GeminiAgent(api_key="test")
+    response = _mock_response({"register": "bogus"})
+    with patch.object(
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(return_value=response),
+    ):
+        result = await agent.classify_register(_card())
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_generate_question_returns_quiz_result():
     agent = GeminiAgent(api_key="test")
     response = _mock_response(
