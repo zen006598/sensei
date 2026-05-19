@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import time
 from pathlib import Path
 
 from sqlmodel import SQLModel, create_engine
@@ -17,7 +18,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
-from src.word_service.card_tagger import CardTagger
+from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 from src.word_service.word_classifier import WordClassifier
 
 
@@ -63,6 +64,23 @@ def main() -> None:
         state_machine, anki_syncer, anki_client, prefs_store, tagger
     )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
+
+    async def _daily_retag(context) -> None:
+        try:
+            local = await tagger.classify_local_all()
+            await anki_syncer.try_sync("after local pass")
+            register = await tagger.classify_register_all()
+            await anki_syncer.try_sync("after register pass")
+            logging.info("daily retag done: local=%s register=%s", local, register)
+        except BatchAlreadyRunningError:
+            logging.warning("daily retag skipped: another batch already running")
+
+    app.job_queue.run_daily(
+        _daily_retag,
+        time=time(hour=settings.scheduler_daily_hour),
+        name="daily_retag",
+    )
+
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 

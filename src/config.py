@@ -51,7 +51,7 @@ def load_settings() -> Settings:
             "GEMINI_CLASSIFY_MODEL", "gemini-3-flash-lite"
         ),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
-        scheduler_daily_hour=int(os.environ.get("SCHEDULER_DAILY_HOUR", "8")),
+        scheduler_daily_hour=int(os.environ.get("SCHEDULER_DAILY_HOUR", "3")),
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
         allowed_user_ids={
             int(uid)
