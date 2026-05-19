@@ -125,3 +125,31 @@ class CardTagger:
 
         await self._persist_tag(card, value)
         return RegisterDelta(register_added=True, failed=False)
+
+    async def classify_local_all(self) -> LocalBatchStats:
+        """Iterate every card in the collection, ensure frequency + academic
+        tags are present. No LLM. Raises BatchAlreadyRunningError if another
+        batch is already in flight."""
+        if self._batch_lock.locked():
+            raise BatchAlreadyRunningError()
+        stats = LocalBatchStats()
+        async with self._batch_lock:
+            card_ids = await self._anki.get_all_card_ids()
+            for card_id in card_ids:
+                try:
+                    card = await self._anki.get_card(card_id)
+                    delta = await self.classify_local(card)
+                    stats.cards_scanned += 1
+                    if delta.frequency_added:
+                        stats.frequency_added += 1
+                    if delta.academic_added:
+                        stats.academic_added += 1
+                except Exception:
+                    logger.warning(
+                        "classify_local_all: card %s failed; continuing",
+                        card_id,
+                        exc_info=True,
+                    )
+                    stats.cards_scanned += 1
+                    stats.write_failures += 1
+        return stats

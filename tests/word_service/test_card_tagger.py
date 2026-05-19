@@ -1,3 +1,4 @@
+import asyncio as _asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -5,8 +6,10 @@ import pytest
 from src.anki.card_data import CardData
 from src.word_service.card_tagger import (
     ACADEMICS,
+    BatchAlreadyRunningError,
     CardTagger,
     FREQUENCIES,
+    LocalBatchStats,
     REGISTERS,
     TAG_PREFIX,
 )
@@ -269,3 +272,83 @@ async def test_classify_with_frequency_cached_skips_frequency_lookup_and_calls_l
     classifier.frequency.assert_not_called()
     classifier.register.assert_awaited_once_with(card)
     assert "sensei:formal" in card.tags
+
+
+def _tagger_with_cards(card_map: dict[int, CardData], classifier=None):
+    """Build a CardTagger whose AnkiClient returns the supplied cards."""
+    anki = MagicMock()
+    anki.get_all_card_ids = AsyncMock(return_value=list(card_map.keys()))
+    anki.get_card = AsyncMock(side_effect=lambda cid: card_map[cid])
+    anki.update_card_tags = AsyncMock()
+    if classifier is None:
+        classifier = MagicMock()
+        classifier.frequency = MagicMock(return_value="common")
+        classifier.is_academic = MagicMock(return_value=False)
+        classifier.register = AsyncMock(return_value="neutral")
+    return CardTagger(anki, classifier), anki, classifier
+
+
+@pytest.mark.asyncio
+async def test_classify_local_all_iterates_all_cards_and_accumulates_stats():
+    cards = {
+        1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d"),
+        2: CardData(card_id=2, front="b", back="", tags=["sensei:rare"], deck_name="d"),
+        3: CardData(card_id=3, front="c", back="", tags=[], deck_name="d"),
+    }
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(side_effect=lambda w: "common")
+    classifier.is_academic = MagicMock(side_effect=lambda w: w == "a")
+    classifier.register = AsyncMock()  # MUST NOT be called
+    tagger, _, _ = _tagger_with_cards(cards, classifier)
+
+    stats = await tagger.classify_local_all()
+
+    assert isinstance(stats, LocalBatchStats)
+    assert stats.cards_scanned == 3
+    assert stats.frequency_added == 2  # card 2 already had sensei:rare
+    assert stats.academic_added == 1  # only card 1 is academic
+    assert stats.write_failures == 0
+    classifier.register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_local_all_swallows_per_card_exceptions():
+    cards = {
+        1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d"),
+        2: CardData(card_id=2, front="b", back="", tags=[], deck_name="d"),
+    }
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock(return_value=False)
+    tagger, anki, _ = _tagger_with_cards(cards, classifier)
+
+    async def write(card_id, tags):
+        if card_id == 1:
+            raise RuntimeError("disk full")
+
+    anki.update_card_tags = AsyncMock(side_effect=write)
+
+    stats = await tagger.classify_local_all()
+
+    assert stats.cards_scanned == 2
+    assert stats.write_failures == 1
+    assert stats.frequency_added == 1  # card 2 succeeded
+
+
+@pytest.mark.asyncio
+async def test_classify_local_all_raises_when_batch_already_running():
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    tagger, _, _ = _tagger_with_cards(cards)
+
+    async def gate(card_id, tags):
+        await _asyncio.sleep(
+            0.01
+        )  # hold the batch open so the second call sees the lock
+
+    tagger._anki.update_card_tags = AsyncMock(side_effect=gate)
+
+    task = _asyncio.create_task(tagger.classify_local_all())
+    await _asyncio.sleep(0)  # let `task` enter the lock
+    with pytest.raises(BatchAlreadyRunningError):
+        await tagger.classify_local_all()
+    await task
