@@ -5,7 +5,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libsqlite3-dev \
     curl \
-    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /usr/local/bin/uv

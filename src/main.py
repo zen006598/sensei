@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, time
+from datetime import time, timedelta, timezone
 from pathlib import Path
 
 from sqlmodel import SQLModel, create_engine
@@ -76,10 +76,9 @@ def main() -> None:
         except BatchAlreadyRunningError:
             logging.warning("daily retag skipped: another batch already running")
 
-    # JobQueue interprets time as UTC unless tzinfo is set; derive it from the
-    # host's local zone (e.g. TZ=Asia/Taipei in docker-compose) so 03:00 means
-    # 03:00 *there*, not 03:00 UTC.
-    local_tz = datetime.now().astimezone().tzinfo
+    # Asia/Taipei is permanently UTC+8 (no DST). Hard-coding the offset avoids
+    # bundling tzdata in the image and lets us skip the TZ env var entirely.
+    local_tz = timezone(timedelta(hours=8))
     app.job_queue.run_daily(
         _daily_retag,
         time=time(hour=settings.scheduler_daily_hour, tzinfo=local_tz),

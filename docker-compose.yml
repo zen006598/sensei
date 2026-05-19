@@ -16,7 +16,6 @@ services:
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DB_PATH=/data/db/sensei.db
       - LOG_LEVEL=ERROR
-      - TZ=Asia/Taipei
     deploy:
       resources:
         limits:
