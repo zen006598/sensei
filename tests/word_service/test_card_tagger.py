@@ -66,3 +66,105 @@ async def test_persist_tag_skips_when_already_present():
     card = _card(tags=["sensei:formal"])
     await tagger._persist_tag(card, "formal")
     anki.update_card_tags.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_local_writes_missing_frequency_and_academic_no_llm():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock(return_value=True)
+    classifier.register = AsyncMock()  # must NOT be called
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    delta = await tagger.classify_local(card)
+
+    assert delta.frequency_added is True
+    assert delta.academic_added is True
+    assert {"sensei:common", "sensei:academic"} <= set(card.tags)
+    classifier.register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_local_skips_already_tagged_axes():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock(return_value=False)
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=["sensei:rare"])  # frequency already cached as rare
+
+    delta = await tagger.classify_local(card)
+
+    assert delta.frequency_added is False
+    assert delta.academic_added is False
+    anki.update_card_tags.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_local_omits_academic_tag_when_negative():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock(return_value=False)
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    delta = await tagger.classify_local(card)
+
+    assert delta.frequency_added is True
+    assert delta.academic_added is False
+    assert "sensei:common" in card.tags
+    assert "sensei:academic" not in card.tags
+
+
+@pytest.mark.asyncio
+async def test_classify_register_writes_when_missing():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.register = AsyncMock(return_value="formal")
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    delta = await tagger.classify_register(card)
+
+    assert delta.register_added is True
+    assert delta.failed is False
+    assert "sensei:formal" in card.tags
+
+
+@pytest.mark.asyncio
+async def test_classify_register_skips_when_cached():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.register = AsyncMock()
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=["sensei:informal"])
+
+    delta = await tagger.classify_register(card)
+
+    assert delta.register_added is False
+    assert delta.failed is False
+    classifier.register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_register_records_failure_on_llm_none():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.register = AsyncMock(return_value=None)
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    delta = await tagger.classify_register(card)
+
+    assert delta.register_added is False
+    assert delta.failed is True
+    anki.update_card_tags.assert_not_awaited()

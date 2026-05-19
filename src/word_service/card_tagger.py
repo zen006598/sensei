@@ -77,3 +77,35 @@ class CardTagger:
         if tag not in card.tags:
             await self._anki.update_card_tags(card.card_id, [tag])
             card.tags.append(tag)
+
+    async def classify_local(self, card: CardData) -> LocalDelta:
+        """Frequency + academic. No LLM. Idempotent: only writes missing tags."""
+        frequency_added = False
+        academic_added = False
+
+        if self._cached(card, FREQUENCIES) is None:
+            value = self._classifier.frequency(card.front)
+            await self._persist_tag(card, value)
+            frequency_added = True
+
+        if self._cached(card, ACADEMICS) is None:
+            if self._classifier.is_academic(card.front):
+                await self._persist_tag(card, "academic")
+                academic_added = True
+
+        return LocalDelta(
+            frequency_added=frequency_added, academic_added=academic_added
+        )
+
+    async def classify_register(self, card: CardData) -> RegisterDelta:
+        """Register only. Calls the LLM through WordClassifier; on failure
+        leaves the card untouched so a future run retries."""
+        if self._cached(card, REGISTERS) is not None:
+            return RegisterDelta(register_added=False, failed=False)
+
+        value = await self._classifier.register(card)
+        if value is None:
+            return RegisterDelta(register_added=False, failed=True)
+
+        await self._persist_tag(card, value)
+        return RegisterDelta(register_added=True, failed=False)
