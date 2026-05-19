@@ -60,3 +60,27 @@ def test_strip_html_returns_plaintext_unchanged_without_warning(recwarn):
 def test_strip_html_parses_actual_html():
     assert _strip_html("<b>hello</b>") == "hello"
     assert _strip_html("<p>a</p><p>b</p>") == "a b"
+
+
+@pytest.mark.asyncio
+async def test_get_all_card_ids_filters_by_deck_when_given():
+    col = MagicMock()
+    col.find_cards.return_value = [10, 20]
+    client = _client_with_col(col)
+
+    ids = await client.get_all_card_ids(deck="English")
+
+    assert ids == [10, 20]
+    col.find_cards.assert_called_once_with('deck:"English"')
+
+
+@pytest.mark.asyncio
+async def test_get_all_card_ids_unfiltered_when_deck_is_none():
+    col = MagicMock()
+    col.find_cards.return_value = [1, 2, 3]
+    client = _client_with_col(col)
+
+    ids = await client.get_all_card_ids()  # default deck=None
+
+    assert ids == [1, 2, 3]
+    col.find_cards.assert_called_once_with("")
