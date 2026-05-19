@@ -13,6 +13,8 @@ from src.word_service.card_tagger import (
     REGISTERS,
     RegisterBatchStats,
     TAG_PREFIX,
+    _REGISTER_BATCH_SIZE,
+    _REGISTER_BATCH_SLEEP_SECONDS,
 )
 
 
@@ -425,3 +427,53 @@ async def test_local_and_register_batches_share_one_lock():
     with pytest.raises(BatchAlreadyRunningError):
         await tagger.classify_register_all()
     await task
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_throttles_after_every_n_llm_calls(monkeypatch):
+    """Avoid Gemini rate limits: sleep _REGISTER_BATCH_SLEEP_SECONDS after every
+    _REGISTER_BATCH_SIZE actual LLM calls. Cached cards do NOT count toward
+    the throttle, and no trailing sleep happens on the last card."""
+    # 12 cards: first 4 already cached (sensei:formal), last 8 need LLM.
+    cards = {}
+    for cid in range(12):
+        tags = ["sensei:formal"] if cid < 4 else []
+        cards[cid] = CardData(
+            card_id=cid, front=f"w{cid}", back="", tags=tags, deck_name="d"
+        )
+    tagger, _, _ = _tagger_with_cards(cards)
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("src.word_service.card_tagger.asyncio.sleep", fake_sleep)
+
+    stats = await tagger.classify_register_all()
+
+    assert stats.register_added == 8  # 4 cached + 8 newly tagged
+    # 8 LLM calls / 5 per batch → one pause after call 5; call 8 is last → no pause
+    assert sleep_calls == [_REGISTER_BATCH_SLEEP_SECONDS]
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_no_throttle_when_all_cards_cached(monkeypatch):
+    cards = {
+        cid: CardData(
+            card_id=cid, front=f"w{cid}", back="", tags=["sensei:formal"], deck_name="d"
+        )
+        for cid in range(_REGISTER_BATCH_SIZE * 3)
+    }
+    tagger, _, _ = _tagger_with_cards(cards)
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("src.word_service.card_tagger.asyncio.sleep", fake_sleep)
+
+    await tagger.classify_register_all()
+
+    assert sleep_calls == []

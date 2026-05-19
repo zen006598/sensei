@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.anki.client import AnkiClient
+from src.anki.client import AnkiClient, _strip_html
 
 
 def _client_with_col(col_mock: MagicMock) -> AnkiClient:
@@ -48,3 +48,15 @@ async def test_get_card_returns_card_data_via_card_to_data():
     assert data.back == "greeting"
     assert data.tags == ["sensei:formal"]
     assert data.deck_name == "Default"
+
+
+def test_strip_html_returns_plaintext_unchanged_without_warning(recwarn):
+    """Plain-text fields must not trigger MarkupResemblesLocatorWarning."""
+    assert _strip_html("run") == "run"
+    assert _strip_html("  trailing whitespace  ") == "trailing whitespace"
+    assert len(recwarn) == 0
+
+
+def test_strip_html_parses_actual_html():
+    assert _strip_html("<b>hello</b>") == "hello"
+    assert _strip_html("<p>a</p><p>b</p>") == "a b"

@@ -106,4 +106,8 @@ class AnkiClient:
 
 
 def _strip_html(html: str) -> str:
+    # Plain-text Anki fields trigger BeautifulSoup's MarkupResemblesLocatorWarning
+    # and a pointless lxml parse. If there's no tag at all, return as-is.
+    if "<" not in html:
+        return html.strip()
     return BeautifulSoup(html, "lxml").get_text(separator=" ").strip()
