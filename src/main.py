@@ -59,7 +59,9 @@ def main() -> None:
         sessions_store,
     )
 
-    handlers = make_handlers(state_machine, anki_syncer, anki_client, prefs_store)
+    handlers = make_handlers(
+        state_machine, anki_syncer, anki_client, prefs_store, tagger
+    )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
     app.run_polling(allowed_updates=["message", "callback_query"])
 

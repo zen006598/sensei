@@ -15,6 +15,7 @@ _BOT_COMMANDS = [
     BotCommand("mode", "Choose card mode"),
     BotCommand("status", "Check due count"),
     BotCommand("stop", "End current session"),
+    BotCommand("retag", "Backfill missing sensei:* tags on all cards"),
     BotCommand("help", "Show this help message"),
 ]
 
@@ -49,6 +50,7 @@ def build_app(token: str, allowed_user_ids: set[int], handlers: dict) -> Applica
     app.add_handler(CommandHandler("quiz", handlers["quiz"], filters=user_filter))
     app.add_handler(CommandHandler("stop", handlers["stop"], filters=user_filter))
     app.add_handler(CommandHandler("status", handlers["status"], filters=user_filter))
+    app.add_handler(CommandHandler("retag", handlers["retag"], filters=user_filter))
     app.add_handler(
         CommandHandler("sync", handlers["sync_command"], filters=user_filter)
     )

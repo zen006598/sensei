@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from telegram import Update
@@ -12,6 +13,12 @@ from src.bot.keyboards import (
     mode_keyboard,
     question_keyboard,
     session_summary_keyboard,
+)
+from src.word_service.card_tagger import (
+    BatchAlreadyRunningError,
+    CardTagger,
+    LocalBatchStats,
+    RegisterBatchStats,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +38,7 @@ def make_handlers(
     syncer: AnkiSyncer,
     anki: AnkiClient,
     prefs: UserPrefsStore,
+    tagger: CardTagger,
 ) -> dict:
     _HELP_TEXT = (
         "Commands:\n"
@@ -279,6 +287,32 @@ def make_handlers(
                 text=f"You have {count} card(s) due. Use /quiz to start!",
             )
 
+    async def retag_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if tagger.is_running:
+            await update.message.reply_text(
+                "A retag job is already running — try again later."
+            )
+            return
+        await update.message.reply_text("Retag started, will notify when done.")
+        asyncio.create_task(_run_retag(update.effective_chat.id, context.bot))
+
+    async def _run_retag(chat_id: int, bot) -> None:
+        try:
+            local = await tagger.classify_local_all()
+            sync1_ok = await syncer.try_sync("after local pass")
+            register = await tagger.classify_register_all()
+            sync2_ok = await syncer.try_sync("after register pass")
+            await bot.send_message(
+                chat_id, text=_format_stats(local, register, sync1_ok, sync2_ok)
+            )
+        except BatchAlreadyRunningError:
+            await bot.send_message(
+                chat_id, text="A retag job is already running — try again later."
+            )
+        except Exception as e:
+            logger.exception("retag failed")
+            await bot.send_message(chat_id, text=f"Retag failed: {e}")
+
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Unhandled exception", exc_info=context.error)
         if isinstance(update, Update) and update.effective_message:
@@ -305,7 +339,28 @@ def make_handlers(
         "sync": sync_callback,
         "send_due_notification": send_due_notification,
         "error": error_handler,
+        "retag": retag_handler,
     }
+
+
+def _format_stats(
+    local: LocalBatchStats,
+    register: RegisterBatchStats,
+    sync1_ok: bool,
+    sync2_ok: bool,
+) -> str:
+    lines = [
+        "Done.",
+        f"Local: frequency={local.frequency_added} academic={local.academic_added}.",
+        f"Register: register={register.register_added} llm_failures={register.register_failures}.",
+        f"Write failures: {local.write_failures + register.write_failures}.",
+    ]
+    if not sync1_ok or not sync2_ok:
+        lines.append(
+            f"Sync: local={'OK' if sync1_ok else 'FAILED'} "
+            f"register={'OK' if sync2_ok else 'FAILED'}"
+        )
+    return "\n".join(lines)
 
 
 def _format_question(question) -> str:
