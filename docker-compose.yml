@@ -15,7 +15,7 @@ services:
       - GEMINI_TIMEOUT=30
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DB_PATH=/data/db/sensei.db
-      - LOG_LEVEL=ERROR
+      - LOG_LEVEL=WARNING
     deploy:
       resources:
         limits:
