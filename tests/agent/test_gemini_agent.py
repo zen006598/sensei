@@ -128,3 +128,44 @@ async def test_evaluate_answer_returns_judge_result():
     assert isinstance(result, JudgeResult)
     assert result.outcome == "grammar_error"
     assert result.error_type == "grammar"
+
+
+@pytest.mark.asyncio
+async def test_generate_question_prompt_includes_c1_vocabulary_cap():
+    """The prompt must instruct Gemini to keep question_text and hint at CEFR C1
+    or below, while exempting the target word itself. Without this cap, generated
+    wording can be harder than the word being tested."""
+    agent = GeminiAgent(api_key="test")
+    response = _mock_response(
+        {
+            "question_type": "fill_in_blank",
+            "question_text": "She made a solemn ___ to keep her word.",
+            "correct_answer": "promise",
+            "hint": "- part of speech: noun",
+        }
+    )
+    captured = {}
+
+    async def fake_generate(**kwargs):
+        captured["contents"] = kwargs["contents"]
+        return response
+
+    with patch.object(
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(side_effect=fake_generate),
+    ):
+        await agent.generate_question(
+            CardData(card_id=2, front="promise", back="約束", tags=[], deck_name="EN"),
+            "common",
+            retry_count=0,
+            recent_errors=[],
+            conversation_summary=None,
+        )
+
+    prompt = captured["contents"]
+    assert "Vocabulary level" in prompt
+    assert "CEFR C1 or below" in prompt
+    assert "10000" in prompt
+    assert "'promise'" in prompt
+    assert "exempt" in prompt
