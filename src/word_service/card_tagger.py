@@ -164,11 +164,11 @@ class CardTagger:
         stats = LocalBatchStats()
         async with self._batch_lock:
             card_ids = await self._anki.get_all_card_ids()
+            stats.cards_scanned = len(card_ids)
             for card_id in card_ids:
                 try:
                     card = await self._anki.get_card(card_id)
                     delta = await self.classify_local(card)
-                    stats.cards_scanned += 1
                     if delta.frequency_added:
                         stats.frequency_added += 1
                     if delta.academic_added:
@@ -179,7 +179,6 @@ class CardTagger:
                         card_id,
                         exc_info=True,
                     )
-                    stats.cards_scanned += 1
                     stats.write_failures += 1
         return stats
 
@@ -191,11 +190,11 @@ class CardTagger:
         stats = RegisterBatchStats()
         async with self._batch_lock:
             card_ids = await self._anki.get_all_card_ids()
+            stats.cards_scanned = len(card_ids)
             for card_id in card_ids:
                 try:
                     card = await self._anki.get_card(card_id)
                     delta = await self.classify_register(card)
-                    stats.cards_scanned += 1
                     if delta.register_added:
                         stats.register_added += 1
                     if delta.failed:
@@ -206,6 +205,5 @@ class CardTagger:
                         card_id,
                         exc_info=True,
                     )
-                    stats.cards_scanned += 1
                     stats.write_failures += 1
         return stats
