@@ -1,9 +1,10 @@
 import asyncio
 import logging
-from datetime import time
+from datetime import datetime, time
 from pathlib import Path
 
 from sqlmodel import SQLModel, create_engine
+from telegram.ext import ContextTypes
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
@@ -65,7 +66,7 @@ def main() -> None:
     )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
 
-    async def _daily_retag(context) -> None:
+    async def _daily_retag(context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             local = await tagger.classify_local_all()
             await anki_syncer.try_sync("after local pass")
@@ -75,9 +76,13 @@ def main() -> None:
         except BatchAlreadyRunningError:
             logging.warning("daily retag skipped: another batch already running")
 
+    # JobQueue interprets time as UTC unless tzinfo is set; derive it from the
+    # host's local zone (e.g. TZ=Asia/Taipei in docker-compose) so 03:00 means
+    # 03:00 *there*, not 03:00 UTC.
+    local_tz = datetime.now().astimezone().tzinfo
     app.job_queue.run_daily(
         _daily_retag,
-        time=time(hour=settings.scheduler_daily_hour),
+        time=time(hour=settings.scheduler_daily_hour, tzinfo=local_tz),
         name="daily_retag",
     )
 
