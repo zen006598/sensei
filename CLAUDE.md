@@ -22,6 +22,10 @@ Python 3.13+, managed with `uv`. There is no Makefile; run commands directly:
 - Build container locally: `docker build -t sensei .`
 - The published image is `ghcr.io/zen006598/sensei:latest`; production uses `docker-compose.yml` which references that tag.
 
+Bot-side commands (sent in Telegram):
+
+- `/retag` — trigger the same `classify_local_all → sync → classify_register_all → sync` pipeline the daily JobQueue runs at 03:00 (timezone is the host's local; see `SCHEDULER_DAILY_HOUR` and `TZ` envvars).
+
 `pytest` is configured with `asyncio_mode = "auto"` — `async def test_…` functions run without an explicit `@pytest.mark.asyncio` marker.
 
 `main.py` at the repo root is a leftover `uv init` stub — the real entrypoint is `src/main.py` / `python -m src.main`.
@@ -37,9 +41,10 @@ The bot is a four-layer pipeline. Each `/quiz` message flows: Telegram → `bot/
 - **`src/bot/app.py`** — `build_app(token, allowed_user_ids, handlers)` builds the PTB `Application`, sets the `BotCommand` menu, installs the `group=-1` auth gate for callback queries, registers every `CommandHandler` / `CallbackQueryHandler` / `MessageHandler`.
 - **`src/agent/state_machine.py`** — `QuizStateMachine`: quiz flow & mastery rules only. Tracks the current `_ActiveSession`, drives question generation / grading / next-question routing. Delegates ALL persistence to stores and ALL Anki/Gemini I/O to collaborators. No `Session(engine)`, no `asyncio.Lock`, no Anki tag operations directly.
 - **`src/agent/gemini_agent.py`** — `GeminiAgent`: thin wrapper around `google-genai`. Structured output uses `response_mime_type="application/json"` + `response_schema` (see `_structured` helper) — the schemas (`QUIZ_SCHEMA`, `JUDGE_SCHEMA`, `CLASSIFY_SCHEMA`) and their matching dataclasses (`QuizResult`, `JudgeResult`, `WordClassification`) live in `agent/schemas.py`. The session-summary call is the only free-text path. (Earlier versions used function-calling tools with `tool_config=ANY`; that was equivalent to "force JSON output" without the agentic-tool semantics, so it was simplified.)
-- **`src/word_service/word_classifier.py`** — `WordClassifier`: pure classification, no I/O writes, no mutation of inputs.
-  - `frequency(word) -> str`: `wordfreq.zipf_frequency` → `_bucket` returns common/rare/obsolete. Sub-ms, no LLM, sync. `zipf_fn` is constructor-injectable for tests.
-  - `register(card) -> str`: reads existing `sensei:<register>` tag from `card.tags` if cached; on miss, calls `agent.classify_register`. Does NOT write the cache back — `QuizStateMachine._classify` does that, using the public `TAG_PREFIX` constant exposed from this module.
+- **`src/word_service/card_tagger.py`** — `CardTagger`: sole owner of `sensei:*` Anki-tag I/O. Two callers:
+  - **Quiz hot path**: `QuizStateMachine` calls `await tagger.classify(card)` once per card, which ensures all three axes are tagged (frequency / academic / register). On cold cards this may invoke the LLM via `WordClassifier.register`; on cards tagged by a prior batch, every axis is a cache hit.
+  - **Background batch**: a daily PTB JobQueue + a manual `/retag` Telegram command call `classify_local_all()` (no LLM; frequency + academic) then `classify_register_all()` (LLM), with `anki_syncer.try_sync(...)` between them. Both methods share a single `_batch_lock`; only one batch runs at a time. Quiz handlers do not block on an in-flight batch — they continue to use `collection_lock` per Anki op.
+- **`src/word_service/word_classifier.py`** — `WordClassifier`: pure classification, no I/O writes, no cache. `frequency(word)` is a sub-ms `wordfreq.zipf_frequency` lookup; `is_academic(word)` is a sub-ms AWL set membership; `register(card)` forwards to the Gemini agent and returns `None` on failure (the agent logs the exception). Cache reads/writes belong to `CardTagger`, not to `WordClassifier`.
 - **`src/anki/client.py`** — `AnkiClient`: async public API. Each method opens `collection.anki2` per operation (contextmanager: open → use → close), takes the shared lock and dispatches the blocking call to an executor inside `_run_locked`. Callers just `await anki.get_due_count()` — they don't see the lock or thread.
 - **`src/anki/sync.py`** — `AnkiSyncer`: talks to AnkiWeb via the `anki` package's internal sync API. `async_sync()` also takes the shared lock (closes the race between a background `_summarize_and_sync` and a foreground `/quiz`). Full-download responses go through a **local HTTP proxy** (`_full_download_via_proxy`) that re-compresses zstd payloads with a content size header — workaround for an Anki Rust-backend bug. Don't remove this proxy without verifying full sync still works.
 - **`src/anki/_lock.py`** — single shared `collection_lock = asyncio.Lock()`. Both `AnkiClient` and `AnkiSyncer` import it so every `Collection(path)` open serialises globally.
@@ -50,7 +55,7 @@ The bot is a four-layer pipeline. Each `/quiz` message flows: Telegram → `bot/
 
 Per Anki card, the state machine generates and grades questions in a small loop until the card is "mastered" or skipped:
 
-1. **First touch of a card**: classify frequency via `wordfreq` (local, sub-ms) and ask Gemini to classify register, caching the register as `sensei:formal|informal|slang|literary|neutral` on the Anki note. Frequency is recomputed every call (free) — older `sensei:common|rare|obsolete` tags on production cards are dead data but harmless.
+1. **Classification path**: `await tagger.classify(card)` (in `card_tagger.py`) returns `(frequency, register)`. On cards already tagged by the daily backfill or a prior quiz, every axis is a cache hit and no LLM call happens. On a freshly-added card never seen by the batch, register costs one LLM call.
 2. **Rare/obsolete cards**: only `fill_in_blank` is asked, one correct answer ends the session.
 3. **Common cards**: must answer correctly on **two** question types — either `fill_in_blank` or `spelling`, **plus** `sentence`. `_is_mastered()` enforces this.
 4. **Grading** uses `evaluate_answer` which returns one of `correct | semantic_correct | grammar_error | vocab_error | wrong`. Each outcome routes to a different next-question type via `forced_type` (see `_handle_judgment`). Spelling questions have a case-insensitive exact-match shortcut before calling Gemini.
@@ -105,6 +110,8 @@ All config flows through `src/config.py` → `Settings` dataclass, loaded from e
 Required: `TELEGRAM_TOKEN`, `ANKIWEB_EMAIL`, `ANKIWEB_PASSWORD`, `GEMINI_API_KEY`.
 
 Common optional: `GEMINI_MODEL` (default `gemini-2.5-flash-lite`; used for quiz/judge/summary), `GEMINI_CLASSIFY_MODEL` (default `gemini-3-flash-lite`; used only for register classification), `ANKI_COLLECTION_PATH` (default `./data/anki/collection.anki2`), `DB_PATH` (default `./data/sensei.db`), `ALLOWED_USER_IDS` (comma-separated; empty = allow all), `LOG_LEVEL` (default `INFO` locally, `ERROR` in production via compose).
+
+Scheduler: `SCHEDULER_DAILY_HOUR` (default `3`, range `0-23`) sets the hour the daily retag JobQueue fires. The job uses the host's local timezone — set the `TZ` env var (e.g. `TZ=Asia/Taipei`) to pin it.
 
 ## Deployment
 

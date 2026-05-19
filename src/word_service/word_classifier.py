@@ -31,7 +31,7 @@ class WordClassifier:
     - `register(card)`: forwards to the Gemini agent; returns None on failure
       (the agent logs the exception).
 
-    Cache reads/writes against Anki tags belong to the caller (QuizStateMachine).
+    Cache reads/writes against Anki tags belong to the caller (CardTagger).
     """
 
     def __init__(
