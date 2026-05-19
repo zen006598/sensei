@@ -37,6 +37,12 @@ def load_settings() -> Settings:
             f"Missing required environment variables: {', '.join(missing)}"
         )
 
+    scheduler_daily_hour = int(os.environ.get("SCHEDULER_DAILY_HOUR", "3"))
+    if not 0 <= scheduler_daily_hour <= 23:
+        raise ValueError(
+            f"SCHEDULER_DAILY_HOUR must be 0–23; got {scheduler_daily_hour}"
+        )
+
     return Settings(
         telegram_token=os.environ["TELEGRAM_TOKEN"],
         ankiweb_email=os.environ["ANKIWEB_EMAIL"],
@@ -51,7 +57,7 @@ def load_settings() -> Settings:
             "GEMINI_CLASSIFY_MODEL", "gemini-3-flash-lite"
         ),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
-        scheduler_daily_hour=int(os.environ.get("SCHEDULER_DAILY_HOUR", "8")),
+        scheduler_daily_hour=scheduler_daily_hour,
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
         allowed_user_ids={
             int(uid)

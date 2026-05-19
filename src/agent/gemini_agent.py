@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import cast, get_args
 
 from google import genai
 from google.genai import types
@@ -8,12 +9,22 @@ from src.agent.schemas import (
     JUDGE_SCHEMA,
     QUIZ_SCHEMA,
     REGISTER_SCHEMA,
+    ErrorType,
+    Frequency,
     JudgeResult,
+    Outcome,
+    QuestionType,
     QuizResult,
+    Register,
 )
 from src.anki.card_data import CardData
 
 logger = logging.getLogger(__name__)
+
+_REGISTER_VALUES: frozenset[str] = frozenset(get_args(Register))
+_QUESTION_TYPE_VALUES: frozenset[str] = frozenset(get_args(QuestionType))
+_OUTCOME_VALUES: frozenset[str] = frozenset(get_args(Outcome))
+_ERROR_TYPE_VALUES: frozenset[str] = frozenset(get_args(ErrorType))
 
 
 class GeminiAgent:
@@ -40,8 +51,10 @@ class GeminiAgent:
         )
         return json.loads(response.text)
 
-    async def classify_register(self, card: CardData) -> str | None:
-        """Returns the formality register, or None if the call/parse fails. Errors are logged, not raised — caller decides how to handle absence."""
+    async def classify_register(self, card: CardData) -> Register | None:
+        """Returns the formality register, or None if the call/parse fails or
+        the model returned a value outside the schema's enum. Errors are
+        logged, not raised — caller decides how to handle absence."""
         prompt = (
             "Classify the formality register of this vocabulary item for a language learner.\n"
             f"Word: {card.front}\n"
@@ -52,7 +65,6 @@ class GeminiAgent:
             data = await self._structured(
                 prompt, REGISTER_SCHEMA, model=self._classify_model
             )
-            return data["register"]
         except Exception:
             logger.warning(
                 "classify_register failed for card %s (front=%r); skipping",
@@ -61,16 +73,25 @@ class GeminiAgent:
                 exc_info=True,
             )
             return None
+        value = data["register"]
+        if value not in _REGISTER_VALUES:
+            logger.warning(
+                "classify_register got unexpected value %r for card %s; ignoring",
+                value,
+                card.card_id,
+            )
+            return None
+        return value
 
     async def generate_question(
         self,
         card: CardData,
-        frequency: str,
+        frequency: Frequency,
         retry_count: int,
         recent_errors: list[str],
         conversation_summary: str | None,
-        forced_type: str | None = None,
-        register: str | None = None,
+        forced_type: QuestionType | None = None,
+        register: Register | None = None,
     ) -> QuizResult:
         if forced_type:
             type_instruction = f"You MUST generate a '{forced_type}' question. No other type is allowed."
@@ -136,8 +157,15 @@ class GeminiAgent:
             "For sentence and spelling, the target word may appear in synonym lists but should not be the whole answer."
         )
         data = await self._structured(prompt, QUIZ_SCHEMA)
+        question_type = data["question_type"]
+        if question_type not in _QUESTION_TYPE_VALUES:
+            logger.warning(
+                "generate_question got unexpected question_type %r for card %s",
+                question_type,
+                card.card_id,
+            )
         return QuizResult(
-            question_type=data["question_type"],
+            question_type=cast("QuestionType", question_type),
             question_text=data["question_text"],
             correct_answer=data["correct_answer"],
             hint=data.get("hint", ""),
@@ -145,7 +173,7 @@ class GeminiAgent:
 
     async def evaluate_answer(
         self,
-        question_type: str,
+        question_type: QuestionType,
         question_text: str,
         correct_answer: str,
         user_answer: str,
@@ -188,10 +216,18 @@ class GeminiAgent:
             "    Example: • 'negotiation' → 'negotiate': should be a verb after 'help someone'"
         )
         data = await self._structured(prompt, JUDGE_SCHEMA)
+        outcome = data["outcome"]
+        if outcome not in _OUTCOME_VALUES:
+            logger.warning("evaluate_answer got unexpected outcome %r", outcome)
         raw_error_type = data.get("error_type", "")
+        if raw_error_type and raw_error_type not in _ERROR_TYPE_VALUES:
+            logger.warning(
+                "evaluate_answer got unexpected error_type %r", raw_error_type
+            )
+            raw_error_type = ""
         return JudgeResult(
-            outcome=data["outcome"],
-            error_type=raw_error_type if raw_error_type else None,
+            outcome=cast("Outcome", outcome),
+            error_type=cast("ErrorType", raw_error_type) if raw_error_type else None,
             suggestion=data["suggestion"],
         )
 

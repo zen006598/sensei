@@ -81,6 +81,14 @@ class AnkiClient:
     async def get_due_count(self) -> int:
         return await self._run_locked(lambda col: len(col.find_cards("is:due")))
 
+    async def get_all_card_ids(self) -> list[int]:
+        """Returns ids of every card in the collection. Cheap; one lock acquire."""
+        return await self._run_locked(lambda col: list(col.find_cards("")))
+
+    async def get_card(self, card_id: int) -> CardData:
+        """Fetch a single card as CardData, regardless of due/new state."""
+        return await self._run_locked(lambda col: self._card_to_data(col, card_id))
+
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)
         note = card.note()

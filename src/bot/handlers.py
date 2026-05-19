@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from telegram import Update
@@ -13,6 +14,8 @@ from src.bot.keyboards import (
     question_keyboard,
     session_summary_keyboard,
 )
+from src.word_service.backfill import BackfillResult, run_full_backfill
+from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ def make_handlers(
     syncer: AnkiSyncer,
     anki: AnkiClient,
     prefs: UserPrefsStore,
+    tagger: CardTagger,
 ) -> dict:
     _HELP_TEXT = (
         "Commands:\n"
@@ -39,6 +43,7 @@ def make_handlers(
         "/decks — Choose which deck to study\n"
         "/mode — Choose card mode (due / new / both)\n"
         "/status — Check how many cards are due\n"
+        "/retag — Backfill missing sensei:* tags on all cards\n"
         "/stop — End current session\n"
         "/help — Show this help message\n"
     )
@@ -279,6 +284,27 @@ def make_handlers(
                 text=f"You have {count} card(s) due. Use /quiz to start!",
             )
 
+    async def retag_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if tagger.is_running:
+            await update.message.reply_text(
+                "A retag job is already running — try again later."
+            )
+            return
+        await update.message.reply_text("Retag started, will notify when done.")
+        asyncio.create_task(_run_retag(update.effective_chat.id, context.bot))
+
+    async def _run_retag(chat_id: int, bot) -> None:
+        try:
+            result = await run_full_backfill(tagger, syncer)
+            await bot.send_message(chat_id, text=_format_stats(result))
+        except BatchAlreadyRunningError:
+            await bot.send_message(
+                chat_id, text="A retag job is already running — try again later."
+            )
+        except Exception as e:
+            logger.exception("retag failed")
+            await bot.send_message(chat_id, text=f"Retag failed: {e}")
+
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Unhandled exception", exc_info=context.error)
         if isinstance(update, Update) and update.effective_message:
@@ -305,7 +331,26 @@ def make_handlers(
         "sync": sync_callback,
         "send_due_notification": send_due_notification,
         "error": error_handler,
+        "retag": retag_command,
     }
+
+
+def _format_stats(result: BackfillResult) -> str:
+    lines = [
+        f"Done. Scanned {result.local.cards_scanned} card(s).",
+        f"Local: frequency={result.local.frequency_added}"
+        f" academic={result.local.academic_added}"
+        f" write_failures={result.local.write_failures}.",
+        f"Register: register={result.register.register_added}"
+        f" llm_failures={result.register.register_failures}"
+        f" write_failures={result.register.write_failures}.",
+    ]
+    if not result.local_sync_ok or not result.register_sync_ok:
+        lines.append(
+            f"Sync: local={'OK' if result.local_sync_ok else 'FAILED'}"
+            f" register={'OK' if result.register_sync_ok else 'FAILED'}"
+        )
+    return "\n".join(lines)
 
 
 def _format_question(question) -> str:

@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,6 +33,21 @@ async def test_classify_register():
 
 
 @pytest.mark.asyncio
+async def test_classify_register_returns_none_on_unexpected_value():
+    """The schema's enum constrains the LLM, but unexpected values can still slip
+    through on API errors / parse drift. Such values must not propagate."""
+    agent = GeminiAgent(api_key="test")
+    response = _mock_response({"register": "bogus"})
+    with patch.object(
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(return_value=response),
+    ):
+        result = await agent.classify_register(_card())
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_generate_question_returns_quiz_result():
     agent = GeminiAgent(api_key="test")
     response = _mock_response(
@@ -57,6 +73,38 @@ async def test_generate_question_returns_quiz_result():
     assert isinstance(result, QuizResult)
     assert result.question_type == "spelling"
     assert result.correct_answer == "run"
+
+
+@pytest.mark.asyncio
+async def test_generate_question_logs_warning_on_unexpected_question_type(caplog):
+    """The schema's enum constrains the LLM, but if a value slips through the
+    agent logs it without crashing the quiz."""
+    agent = GeminiAgent(api_key="test")
+    response = _mock_response(
+        {
+            "question_type": "bogus",
+            "question_text": "?",
+            "correct_answer": "?",
+            "hint": "",
+        }
+    )
+    with (
+        patch.object(
+            agent._client.aio.models,
+            "generate_content",
+            new=AsyncMock(return_value=response),
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = await agent.generate_question(
+            _card(),
+            "common",
+            retry_count=0,
+            recent_errors=[],
+            conversation_summary=None,
+        )
+    assert "unexpected question_type" in caplog.text
+    assert isinstance(result, QuizResult)
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,24 @@
+import logging
+from datetime import time, timedelta, timezone
+
 from telegram import BotCommand
 from telegram.ext import (
     Application,
     ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
+
+from src.anki.sync import AnkiSyncer
+from src.word_service.backfill import run_full_backfill
+from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
+
+# Asia/Taipei is permanently UTC+8 (no DST). Hard-coding the offset avoids
+# bundling tzdata in the image and the TZ env var.
+_LOCAL_TZ = timezone(timedelta(hours=8))
 
 _BOT_COMMANDS = [
     BotCommand("quiz", "Start a review session"),
@@ -15,6 +27,7 @@ _BOT_COMMANDS = [
     BotCommand("mode", "Choose card mode"),
     BotCommand("status", "Check due count"),
     BotCommand("stop", "End current session"),
+    BotCommand("retag", "Backfill missing sensei:* tags on all cards"),
     BotCommand("help", "Show this help message"),
 ]
 
@@ -49,6 +62,7 @@ def build_app(token: str, allowed_user_ids: set[int], handlers: dict) -> Applica
     app.add_handler(CommandHandler("quiz", handlers["quiz"], filters=user_filter))
     app.add_handler(CommandHandler("stop", handlers["stop"], filters=user_filter))
     app.add_handler(CommandHandler("status", handlers["status"], filters=user_filter))
+    app.add_handler(CommandHandler("retag", handlers["retag"], filters=user_filter))
     app.add_handler(
         CommandHandler("sync", handlers["sync_command"], filters=user_filter)
     )
@@ -71,3 +85,26 @@ def build_app(token: str, allowed_user_ids: set[int], handlers: dict) -> Applica
     app.add_error_handler(handlers["error"])
 
     return app
+
+
+def register_jobs(
+    app: Application,
+    *,
+    tagger: CardTagger,
+    syncer: AnkiSyncer,
+    daily_hour: int,
+) -> None:
+    """Register PTB JobQueue jobs. Called by main.py after build_app."""
+
+    async def _daily_retag(context: ContextTypes.DEFAULT_TYPE) -> None:
+        try:
+            result = await run_full_backfill(tagger, syncer)
+            logging.info("daily retag done: %s", result)
+        except BatchAlreadyRunningError:
+            logging.warning("daily retag skipped: another batch already running")
+
+    app.job_queue.run_daily(
+        _daily_retag,
+        time=time(hour=daily_hour, tzinfo=_LOCAL_TZ),
+        name="daily_retag",
+    )

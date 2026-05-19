@@ -8,7 +8,7 @@ from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
-from src.bot.app import build_app
+from src.bot.app import build_app, register_jobs
 from src.bot.handlers import make_handlers
 from src.config import load_settings
 from src.db.conversation_session import ConversationSession  # noqa: F401 — ensure table registered
@@ -17,6 +17,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
+from src.word_service.card_tagger import CardTagger
 from src.word_service.word_classifier import WordClassifier
 
 
@@ -47,18 +48,28 @@ def main() -> None:
         classify_model=settings.gemini_classify_model,
     )
     classifier = WordClassifier(agent)
+    tagger = CardTagger(anki_client, classifier)
     state_machine = QuizStateMachine(
         anki_client,
         anki_syncer,
         agent,
-        classifier,
+        tagger,
         prefs_store,
         errors_store,
         sessions_store,
     )
 
-    handlers = make_handlers(state_machine, anki_syncer, anki_client, prefs_store)
+    handlers = make_handlers(
+        state_machine, anki_syncer, anki_client, prefs_store, tagger
+    )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
+    register_jobs(
+        app,
+        tagger=tagger,
+        syncer=anki_syncer,
+        daily_hour=settings.scheduler_daily_hour,
+    )
+
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 

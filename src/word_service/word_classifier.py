@@ -3,16 +3,12 @@ from typing import Callable
 from wordfreq import zipf_frequency
 
 from src.agent.gemini_agent import GeminiAgent
+from src.agent.schemas import Frequency, Register
 from src.anki.card_data import CardData
 from src.word_service._awl_data import _AWL_WORDS
 
-TAG_PREFIX = "sensei:"
-FREQUENCIES = frozenset({"common", "rare", "obsolete"})
-REGISTERS = frozenset({"formal", "informal", "slang", "literary", "neutral"})
-ACADEMICS = frozenset({"academic"})  # only the positive case is tagged
 
-
-def _bucket(zipf: float) -> str:
+def _bucket(zipf: float) -> Frequency:
     """Map a Zipf score to common/rare/obsolete.
 
     Zipf reference: 7+ function words, 4-6 everyday, 2-4 specialised, <2 archaic, 0 unknown to corpus.
@@ -36,7 +32,7 @@ class WordClassifier:
     - `register(card)`: forwards to the Gemini agent; returns None on failure
       (the agent logs the exception).
 
-    Cache reads/writes against Anki tags belong to the caller (QuizStateMachine).
+    Cache reads/writes against Anki tags belong to the caller (CardTagger).
     """
 
     def __init__(
@@ -47,7 +43,7 @@ class WordClassifier:
         self._agent = agent
         self._zipf_fn = zipf_fn
 
-    def frequency(self, word: str) -> str:
+    def frequency(self, word: str) -> Frequency:
         """Returns 'common' | 'rare' | 'obsolete'. Sub-ms, no I/O."""
         return _bucket(self._zipf_fn(word.lower(), "en"))
 
@@ -55,6 +51,6 @@ class WordClassifier:
         """True if the word belongs to Coxhead's Academic Word List. Sub-ms, no I/O."""
         return word.lower() in _AWL_WORDS
 
-    async def register(self, card: CardData) -> str | None:
+    async def register(self, card: CardData) -> Register | None:
         """Returns the formality register, or None on LLM failure (logged inside the agent)."""
         return await self._agent.classify_register(card)
