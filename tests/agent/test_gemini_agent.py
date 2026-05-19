@@ -169,3 +169,40 @@ async def test_generate_question_prompt_includes_c1_vocabulary_cap():
     assert "10000" in prompt
     assert "'promise'" in prompt
     assert "exempt" in prompt
+
+
+@pytest.mark.asyncio
+async def test_evaluate_answer_prompt_forbids_leaking_target_word():
+    """For wrong answers on spelling/fill_in_blank, the suggestion must not name,
+    define, or describe the target word. Production saw 'A crate is a sturdy
+    wooden box...' which spelled out the target word `crate` in the feedback."""
+    agent = GeminiAgent(api_key="test")
+    response = _mock_response(
+        {
+            "outcome": "wrong",
+            "error_type": "",
+            "suggestion": "Different word. Think about transport.",
+        }
+    )
+    captured = {}
+
+    async def fake_generate(**kwargs):
+        captured["contents"] = kwargs["contents"]
+        return response
+
+    with patch.object(
+        agent._client.aio.models,
+        "generate_content",
+        new=AsyncMock(side_effect=fake_generate),
+    ):
+        await agent.evaluate_answer(
+            "fill_in_blank",
+            "They placed the fruit in a large sturdy ___ for transport.",
+            "crate",
+            "cartoon",
+        )
+
+    prompt = captured["contents"]
+    assert "MUST NOT" in prompt
+    assert "'crate'" in prompt
+    assert "directional nudge" in prompt or "thematic category" in prompt
