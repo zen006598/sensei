@@ -11,6 +11,7 @@ from src.word_service.card_tagger import (
     FREQUENCIES,
     LocalBatchStats,
     REGISTERS,
+    RegisterBatchStats,
     TAG_PREFIX,
 )
 
@@ -351,4 +352,76 @@ async def test_classify_local_all_raises_when_batch_already_running():
     await _asyncio.sleep(0)  # let `task` enter the lock
     with pytest.raises(BatchAlreadyRunningError):
         await tagger.classify_local_all()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_writes_register_for_missing_cards():
+    cards = {
+        1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d"),
+        2: CardData(
+            card_id=2, front="b", back="", tags=["sensei:formal"], deck_name="d"
+        ),
+    }
+    classifier = MagicMock()
+    classifier.register = AsyncMock(return_value="neutral")
+    tagger, _, _ = _tagger_with_cards(cards, classifier)
+
+    stats = await tagger.classify_register_all()
+
+    assert isinstance(stats, RegisterBatchStats)
+    assert stats.cards_scanned == 2
+    assert stats.register_added == 1  # card 2 already had sensei:formal
+    assert stats.register_failures == 0
+    assert stats.write_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_counts_llm_failures_without_writing():
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    classifier = MagicMock()
+    classifier.register = AsyncMock(return_value=None)
+    tagger, anki, _ = _tagger_with_cards(cards, classifier)
+
+    stats = await tagger.classify_register_all()
+
+    assert stats.register_added == 0
+    assert stats.register_failures == 1
+    anki.update_card_tags.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_raises_when_batch_already_running():
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    classifier = MagicMock()
+
+    async def slow_register(card):
+        await _asyncio.sleep(0.01)
+        return "neutral"
+
+    classifier.register = AsyncMock(side_effect=slow_register)
+    tagger, _, _ = _tagger_with_cards(cards, classifier)
+
+    task = _asyncio.create_task(tagger.classify_register_all())
+    await _asyncio.sleep(0)
+    with pytest.raises(BatchAlreadyRunningError):
+        await tagger.classify_register_all()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_local_and_register_batches_share_one_lock():
+    """Starting local_all then immediately register_all raises — the lock is shared."""
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    tagger, anki, _ = _tagger_with_cards(cards)
+
+    async def slow_write(card_id, tags):
+        await _asyncio.sleep(0.01)
+
+    anki.update_card_tags = AsyncMock(side_effect=slow_write)
+
+    task = _asyncio.create_task(tagger.classify_local_all())
+    await _asyncio.sleep(0)
+    with pytest.raises(BatchAlreadyRunningError):
+        await tagger.classify_register_all()
     await task
