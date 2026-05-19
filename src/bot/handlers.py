@@ -14,12 +14,8 @@ from src.bot.keyboards import (
     question_keyboard,
     session_summary_keyboard,
 )
-from src.word_service.card_tagger import (
-    BatchAlreadyRunningError,
-    CardTagger,
-    LocalBatchStats,
-    RegisterBatchStats,
-)
+from src.word_service.backfill import BackfillResult, run_full_backfill
+from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 
 logger = logging.getLogger(__name__)
 
@@ -299,13 +295,8 @@ def make_handlers(
 
     async def _run_retag(chat_id: int, bot) -> None:
         try:
-            local = await tagger.classify_local_all()
-            sync1_ok = await syncer.try_sync("after local pass")
-            register = await tagger.classify_register_all()
-            sync2_ok = await syncer.try_sync("after register pass")
-            await bot.send_message(
-                chat_id, text=_format_stats(local, register, sync1_ok, sync2_ok)
-            )
+            result = await run_full_backfill(tagger, syncer)
+            await bot.send_message(chat_id, text=_format_stats(result))
         except BatchAlreadyRunningError:
             await bot.send_message(
                 chat_id, text="A retag job is already running — try again later."
@@ -344,24 +335,20 @@ def make_handlers(
     }
 
 
-def _format_stats(
-    local: LocalBatchStats,
-    register: RegisterBatchStats,
-    sync1_ok: bool,
-    sync2_ok: bool,
-) -> str:
+def _format_stats(result: BackfillResult) -> str:
     lines = [
-        f"Done. Scanned {local.cards_scanned} card(s).",
-        f"Local: frequency={local.frequency_added} academic={local.academic_added}"
-        f" write_failures={local.write_failures}.",
-        f"Register: register={register.register_added}"
-        f" llm_failures={register.register_failures}"
-        f" write_failures={register.write_failures}.",
+        f"Done. Scanned {result.local.cards_scanned} card(s).",
+        f"Local: frequency={result.local.frequency_added}"
+        f" academic={result.local.academic_added}"
+        f" write_failures={result.local.write_failures}.",
+        f"Register: register={result.register.register_added}"
+        f" llm_failures={result.register.register_failures}"
+        f" write_failures={result.register.write_failures}.",
     ]
-    if not sync1_ok or not sync2_ok:
+    if not result.local_sync_ok or not result.register_sync_ok:
         lines.append(
-            f"Sync: local={'OK' if sync1_ok else 'FAILED'}"
-            f" register={'OK' if sync2_ok else 'FAILED'}"
+            f"Sync: local={'OK' if result.local_sync_ok else 'FAILED'}"
+            f" register={'OK' if result.register_sync_ok else 'FAILED'}"
         )
     return "\n".join(lines)
 

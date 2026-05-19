@@ -19,6 +19,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
+from src.word_service.backfill import run_full_backfill
 from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 from src.word_service.word_classifier import WordClassifier
 
@@ -68,11 +69,8 @@ def main() -> None:
 
     async def _daily_retag(context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
-            local = await tagger.classify_local_all()
-            await anki_syncer.try_sync("after local pass")
-            register = await tagger.classify_register_all()
-            await anki_syncer.try_sync("after register pass")
-            logging.info("daily retag done: local=%s register=%s", local, register)
+            result = await run_full_backfill(tagger, anki_syncer)
+            logging.info("daily retag done: %s", result)
         except BatchAlreadyRunningError:
             logging.warning("daily retag skipped: another batch already running")
 
