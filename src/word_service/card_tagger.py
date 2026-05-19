@@ -30,6 +30,12 @@ FREQUENCIES: frozenset[str] = frozenset(get_args(Frequency))
 REGISTERS: frozenset[str] = frozenset(get_args(Register))
 ACADEMICS = frozenset({"academic"})  # only the positive case is tagged
 
+# Gemini rate-limit throttle for classify_register_all. Sleep
+# _REGISTER_BATCH_SLEEP_SECONDS after every _REGISTER_BATCH_SIZE actual LLM
+# calls. Cached cards (cache hit on REGISTERS) do not count.
+_REGISTER_BATCH_SIZE = 5
+_REGISTER_BATCH_SLEEP_SECONDS = 1.0
+
 
 class BatchAlreadyRunningError(RuntimeError):
     """Raised when classify_local_all / classify_register_all is invoked while
@@ -191,7 +197,9 @@ class CardTagger:
         async with self._batch_lock:
             card_ids = await self._anki.get_all_card_ids()
             stats.cards_scanned = len(card_ids)
-            for card_id in card_ids:
+            llm_calls_made = 0
+            for i, card_id in enumerate(card_ids):
+                llm_called = False
                 try:
                     card = await self._anki.get_card(card_id)
                     delta = await self.classify_register(card)
@@ -199,6 +207,9 @@ class CardTagger:
                         stats.register_added += 1
                     if delta.failed:
                         stats.register_failures += 1
+                    # delta.register_added or delta.failed both imply the LLM
+                    # was reached (cache hits return False/False).
+                    llm_called = delta.register_added or delta.failed
                 except Exception:
                     logger.warning(
                         "classify_register_all: card %s failed; continuing",
@@ -206,4 +217,10 @@ class CardTagger:
                         exc_info=True,
                     )
                     stats.write_failures += 1
+                    llm_called = True  # exception almost certainly at LLM step
+                if llm_called:
+                    llm_calls_made += 1
+                    is_last = i == len(card_ids) - 1
+                    if llm_calls_made % _REGISTER_BATCH_SIZE == 0 and not is_last:
+                        await asyncio.sleep(_REGISTER_BATCH_SLEEP_SECONDS)
         return stats
