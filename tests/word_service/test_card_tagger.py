@@ -246,3 +246,26 @@ async def test_classify_uses_cache_for_all_three_axes():
     classifier.is_academic.assert_not_called()
     classifier.register.assert_not_awaited()
     anki.update_card_tags.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_with_frequency_cached_skips_frequency_lookup_and_calls_llm():
+    """Post-batch state: frequency is cached by classify_local_all; register
+    is filled lazily by the quiz path. The frequency classifier must NOT
+    re-run; the LLM must."""
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock()  # must NOT be called
+    classifier.is_academic = MagicMock(return_value=False)
+    classifier.register = AsyncMock(return_value="formal")
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=["sensei:common"])
+
+    frequency, register = await tagger.classify(card)
+
+    assert frequency == "common"
+    assert register == "formal"
+    classifier.frequency.assert_not_called()
+    classifier.register.assert_awaited_once_with(card)
+    assert "sensei:formal" in card.tags
