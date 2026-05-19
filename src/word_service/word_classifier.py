@@ -6,11 +6,6 @@ from src.agent.gemini_agent import GeminiAgent
 from src.anki.card_data import CardData
 from src.word_service._awl_data import _AWL_WORDS
 
-TAG_PREFIX = "sensei:"
-FREQUENCIES = frozenset({"common", "rare", "obsolete"})
-REGISTERS = frozenset({"formal", "informal", "slang", "literary", "neutral"})
-ACADEMICS = frozenset({"academic"})  # only the positive case is tagged
-
 
 def _bucket(zipf: float) -> str:
     """Map a Zipf score to common/rare/obsolete.
