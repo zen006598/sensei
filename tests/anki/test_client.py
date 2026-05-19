@@ -84,3 +84,64 @@ async def test_get_all_card_ids_unfiltered_when_deck_is_none():
 
     assert ids == [1, 2, 3]
     col.find_cards.assert_called_once_with("")
+
+
+@pytest.mark.asyncio
+async def test_get_card_field_returns_value_by_field_name():
+    note = MagicMock()
+    note.note_type.return_value = {"flds": [{"name": "front"}, {"name": "sound"}]}
+    note.fields = ["hello", "[sound:hi.mp3]"]
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    assert await client.get_card_field(42, "sound") == "[sound:hi.mp3]"
+    assert await client.get_card_field(42, "front") == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_card_field_returns_empty_when_field_absent():
+    note = MagicMock()
+    note.note_type.return_value = {"flds": [{"name": "front"}]}
+    note.fields = ["hello"]
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    assert await client.get_card_field(42, "sound") == ""
+
+
+@pytest.mark.asyncio
+async def test_set_card_field_writes_value_and_persists_note():
+    note = MagicMock()
+    note.note_type.return_value = {"flds": [{"name": "front"}, {"name": "sound"}]}
+    note.fields = ["hello", ""]
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    await client.set_card_field(42, "sound", "[sound:sensei_42.mp3]")
+
+    assert note.fields[1] == "[sound:sensei_42.mp3]"
+    col.update_note.assert_called_once_with(note)
+
+
+@pytest.mark.asyncio
+async def test_set_card_field_raises_keyerror_for_unknown_field():
+    note = MagicMock()
+    note.note_type.return_value = {"flds": [{"name": "front"}]}
+    note.fields = ["hello"]
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    with pytest.raises(KeyError, match="sound"):
+        await client.set_card_field(42, "sound", "x")

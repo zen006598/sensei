@@ -91,6 +91,33 @@ class AnkiClient:
         """Fetch a single card as CardData, regardless of due/new state."""
         return await self._run_locked(lambda col: self._card_to_data(col, card_id))
 
+    async def get_card_field(self, card_id: int, field_name: str) -> str:
+        """Read a named field's value. Returns "" if the field is absent on
+        this card's note type."""
+
+        def fn(col):
+            note = col.get_card(card_id).note()
+            idx = self._field_index(note, field_name)
+            if idx is None:
+                return ""
+            return note.fields[idx]
+
+        return await self._run_locked(fn)
+
+    async def set_card_field(self, card_id: int, field_name: str, value: str) -> None:
+        """Write a named field's value. Raises KeyError if the field is absent
+        on this card's note type."""
+
+        def fn(col):
+            note = col.get_card(card_id).note()
+            idx = self._field_index(note, field_name)
+            if idx is None:
+                raise KeyError(field_name)
+            note.fields[idx] = value
+            col.update_note(note)
+
+        await self._run_locked(fn)
+
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)
         note = card.note()
@@ -105,6 +132,13 @@ class AnkiClient:
             tags=note.tags,
             deck_name=deck_name,
         )
+
+    @staticmethod
+    def _field_index(note, field_name: str) -> int | None:
+        for i, f in enumerate(note.note_type()["flds"]):
+            if f["name"] == field_name:
+                return i
+        return None
 
 
 def _strip_html(html: str) -> str:
