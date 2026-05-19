@@ -161,15 +161,15 @@ class CardTagger:
         await self._persist_tag(card, value)
         return RegisterDelta(register_added=True, failed=False)
 
-    async def classify_local_all(self) -> LocalBatchStats:
-        """Iterate every card in the collection, ensure frequency + academic
-        tags are present. No LLM. Raises BatchAlreadyRunningError if another
-        batch is already in flight."""
+    async def classify_local_all(self, deck: str | None = None) -> LocalBatchStats:
+        """Iterate every card in the collection (or just `deck` if given) and
+        ensure frequency + academic tags are present. No LLM.
+        Raises BatchAlreadyRunningError if another batch is in flight."""
         if self._batch_lock.locked():
             raise BatchAlreadyRunningError()
         stats = LocalBatchStats()
         async with self._batch_lock:
-            card_ids = await self._anki.get_all_card_ids()
+            card_ids = await self._anki.get_all_card_ids(deck=deck)
             stats.cards_scanned = len(card_ids)
             for card_id in card_ids:
                 try:
@@ -188,14 +188,17 @@ class CardTagger:
                     stats.write_failures += 1
         return stats
 
-    async def classify_register_all(self) -> RegisterBatchStats:
-        """Iterate every card and ensure a register tag is present.
-        Uses the LLM via WordClassifier. Shares _batch_lock with classify_local_all."""
+    async def classify_register_all(
+        self, deck: str | None = None
+    ) -> RegisterBatchStats:
+        """Iterate every card (or just `deck` if given) and ensure a register
+        tag is present. Uses the LLM via WordClassifier. Shares _batch_lock
+        with classify_local_all."""
         if self._batch_lock.locked():
             raise BatchAlreadyRunningError()
         stats = RegisterBatchStats()
         async with self._batch_lock:
-            card_ids = await self._anki.get_all_card_ids()
+            card_ids = await self._anki.get_all_card_ids(deck=deck)
             stats.cards_scanned = len(card_ids)
             llm_calls_made = 0
             for i, card_id in enumerate(card_ids):

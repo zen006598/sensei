@@ -23,15 +23,17 @@ class BackfillResult:
     register_sync_ok: bool
 
 
-async def run_full_backfill(tagger: CardTagger, syncer: AnkiSyncer) -> BackfillResult:
+async def run_full_backfill(
+    tagger: CardTagger, syncer: AnkiSyncer, deck: str | None = None
+) -> BackfillResult:
     """Two-pass backfill: local → sync → register → sync.
 
     Raises `BatchAlreadyRunningError` (from card_tagger) if a batch is already
     in flight. Sync failures are absorbed by `AnkiSyncer.try_sync` and reflected
     as `False` flags on the returned result — they do not abort the second pass."""
-    local = await tagger.classify_local_all()
+    local = await tagger.classify_local_all(deck=deck)
     local_sync_ok = await syncer.try_sync("after local pass")
-    register = await tagger.classify_register_all()
+    register = await tagger.classify_register_all(deck=deck)
     register_sync_ok = await syncer.try_sync("after register pass")
     return BackfillResult(
         local=local,

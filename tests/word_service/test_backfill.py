@@ -57,10 +57,10 @@ async def test_run_full_backfill_sequence_is_local_sync_register_sync():
     calls = []
     tagger = MagicMock()
     tagger.classify_local_all = AsyncMock(
-        side_effect=lambda: calls.append("local") or LocalBatchStats()
+        side_effect=lambda deck=None: calls.append("local") or LocalBatchStats()
     )
     tagger.classify_register_all = AsyncMock(
-        side_effect=lambda: calls.append("register") or RegisterBatchStats()
+        side_effect=lambda deck=None: calls.append("register") or RegisterBatchStats()
     )
     syncer = MagicMock()
     syncer.try_sync = AsyncMock(
@@ -99,3 +99,14 @@ async def test_run_full_backfill_propagates_batch_already_running():
 
     syncer.try_sync.assert_not_awaited()
     tagger.classify_register_all.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_full_backfill_threads_deck_to_batches():
+    tagger = _tagger()
+    syncer = _syncer()
+
+    await run_full_backfill(tagger, syncer, deck="English")
+
+    tagger.classify_local_all.assert_awaited_once_with(deck="English")
+    tagger.classify_register_all.assert_awaited_once_with(deck="English")

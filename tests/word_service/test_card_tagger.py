@@ -477,3 +477,23 @@ async def test_classify_register_all_no_throttle_when_all_cards_cached(monkeypat
     await tagger.classify_register_all()
 
     assert sleep_calls == []
+
+
+@pytest.mark.asyncio
+async def test_classify_local_all_passes_deck_to_anki(monkeypatch):
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    tagger, anki, _ = _tagger_with_cards(cards)
+
+    await tagger.classify_local_all(deck="English")
+
+    anki.get_all_card_ids.assert_awaited_once_with(deck="English")
+
+
+@pytest.mark.asyncio
+async def test_classify_register_all_passes_deck_to_anki(monkeypatch):
+    cards = {1: CardData(card_id=1, front="a", back="", tags=[], deck_name="d")}
+    tagger, anki, _ = _tagger_with_cards(cards)
+
+    await tagger.classify_register_all(deck="English")
+
+    anki.get_all_card_ids.assert_awaited_once_with(deck="English")
