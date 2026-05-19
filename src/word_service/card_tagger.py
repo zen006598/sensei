@@ -1,3 +1,18 @@
+"""Anki tag I/O for the `sensei:*` namespace.
+
+`CardTagger` owns every read and write of the four `sensei:*` axes
+(frequency / academic / register). Two call sites:
+
+- Quiz hot path: `state_machine` calls `classify(card)`, which ensures all
+  three axes are present (lazy, per-card, may call the LLM for register).
+- Background batch: the daily JobQueue and `/retag` handler call
+  `classify_local_all()` (no LLM) then `classify_register_all()` (LLM)
+  via `AnkiSyncer.try_sync` between them.
+
+Batch methods share `_batch_lock`; only one batch runs at a time.
+See docs/superpowers/specs/2026-05-19-tag-backfill-job-design.md for
+the full design."""
+
 import asyncio
 import logging
 from dataclasses import dataclass
@@ -41,6 +56,13 @@ class LocalBatchStats:
 
 @dataclass
 class RegisterBatchStats:
+    """Counters for a `classify_register_all` run.
+
+    `register_failures` counts only LLM-leg failures (transport / parse / None return).
+    A card that succeeded on the LLM call but failed during the tag write goes to
+    `write_failures` — its LLM cost was still spent. The output formatter
+    surfaces this distinction (Task 8)."""
+
     cards_scanned: int = 0
     register_added: int = 0
     register_failures: int = 0
