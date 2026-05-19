@@ -1,16 +1,14 @@
 import asyncio
 import logging
-from datetime import time, timedelta, timezone
 from pathlib import Path
 
 from sqlmodel import SQLModel, create_engine
-from telegram.ext import ContextTypes
 
 from src.agent.gemini_agent import GeminiAgent
 from src.agent.state_machine import QuizStateMachine
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
-from src.bot.app import build_app
+from src.bot.app import build_app, register_jobs
 from src.bot.handlers import make_handlers
 from src.config import load_settings
 from src.db.conversation_session import ConversationSession  # noqa: F401 — ensure table registered
@@ -19,8 +17,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
-from src.word_service.backfill import run_full_backfill
-from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
+from src.word_service.card_tagger import CardTagger
 from src.word_service.word_classifier import WordClassifier
 
 
@@ -66,21 +63,11 @@ def main() -> None:
         state_machine, anki_syncer, anki_client, prefs_store, tagger
     )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
-
-    async def _daily_retag(context: ContextTypes.DEFAULT_TYPE) -> None:
-        try:
-            result = await run_full_backfill(tagger, anki_syncer)
-            logging.info("daily retag done: %s", result)
-        except BatchAlreadyRunningError:
-            logging.warning("daily retag skipped: another batch already running")
-
-    # Asia/Taipei is permanently UTC+8 (no DST). Hard-coding the offset avoids
-    # bundling tzdata in the image and lets us skip the TZ env var entirely.
-    local_tz = timezone(timedelta(hours=8))
-    app.job_queue.run_daily(
-        _daily_retag,
-        time=time(hour=settings.scheduler_daily_hour, tzinfo=local_tz),
-        name="daily_retag",
+    register_jobs(
+        app,
+        tagger=tagger,
+        syncer=anki_syncer,
+        daily_hour=settings.scheduler_daily_hour,
     )
 
     app.run_polling(allowed_updates=["message", "callback_query"])
