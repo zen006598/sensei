@@ -32,7 +32,7 @@ class AnkiSyncer:
         col = Collection(self._collection_path)
         try:
             auth: SyncAuth = col.sync_login(self._email, self._password, None)
-            out = col.sync_collection(auth, sync_media=False)
+            out = col.sync_collection(auth, sync_media=True)
             required = out.required
             if required in (out.NO_CHANGES, out.NORMAL_SYNC):
                 return SyncResult(success=True, message="Sync complete")
