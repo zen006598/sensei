@@ -126,3 +126,38 @@ async def test_retag_handles_batch_already_running_race_inside_task():
         or ctx.bot.send_message.await_args.args[1]
     )
     assert "already running" in final.lower()
+
+
+@pytest.mark.asyncio
+async def test_retag_final_message_includes_scanned_count_and_per_phase_failures():
+    tagger = MagicMock()
+    type(tagger).is_running = property(lambda self: False)
+    tagger.classify_local_all = AsyncMock(
+        return_value=LocalBatchStats(
+            cards_scanned=10, frequency_added=3, academic_added=1, write_failures=2
+        )
+    )
+    tagger.classify_register_all = AsyncMock(
+        return_value=RegisterBatchStats(
+            cards_scanned=10,
+            register_added=4,
+            register_failures=1,
+            write_failures=1,
+        )
+    )
+    handlers, _ = _build_handlers(tagger)
+    update, ctx = _update_and_ctx()
+
+    await handlers["retag"](update, ctx)
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for t in pending:
+        await t
+
+    body = (
+        ctx.bot.send_message.await_args.kwargs.get("text")
+        or ctx.bot.send_message.await_args.args[1]
+    )
+    assert "Scanned 10 card(s)" in body
+    assert "write_failures=2" in body  # local-phase write failures surfaced
+    assert "write_failures=1" in body  # register-phase write failures surfaced
+    assert "llm_failures=1" in body

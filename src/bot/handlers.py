@@ -47,6 +47,7 @@ def make_handlers(
         "/decks — Choose which deck to study\n"
         "/mode — Choose card mode (due / new / both)\n"
         "/status — Check how many cards are due\n"
+        "/retag — Backfill missing sensei:* tags on all cards\n"
         "/stop — End current session\n"
         "/help — Show this help message\n"
     )
@@ -287,7 +288,7 @@ def make_handlers(
                 text=f"You have {count} card(s) due. Use /quiz to start!",
             )
 
-    async def retag_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def retag_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if tagger.is_running:
             await update.message.reply_text(
                 "A retag job is already running — try again later."
@@ -339,7 +340,7 @@ def make_handlers(
         "sync": sync_callback,
         "send_due_notification": send_due_notification,
         "error": error_handler,
-        "retag": retag_handler,
+        "retag": retag_command,
     }
 
 
@@ -350,15 +351,17 @@ def _format_stats(
     sync2_ok: bool,
 ) -> str:
     lines = [
-        "Done.",
-        f"Local: frequency={local.frequency_added} academic={local.academic_added}.",
-        f"Register: register={register.register_added} llm_failures={register.register_failures}.",
-        f"Write failures: {local.write_failures + register.write_failures}.",
+        f"Done. Scanned {local.cards_scanned} card(s).",
+        f"Local: frequency={local.frequency_added} academic={local.academic_added}"
+        f" write_failures={local.write_failures}.",
+        f"Register: register={register.register_added}"
+        f" llm_failures={register.register_failures}"
+        f" write_failures={register.write_failures}.",
     ]
     if not sync1_ok or not sync2_ok:
         lines.append(
-            f"Sync: local={'OK' if sync1_ok else 'FAILED'} "
-            f"register={'OK' if sync2_ok else 'FAILED'}"
+            f"Sync: local={'OK' if sync1_ok else 'FAILED'}"
+            f" register={'OK' if sync2_ok else 'FAILED'}"
         )
     return "\n".join(lines)
 
