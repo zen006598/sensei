@@ -32,7 +32,7 @@ class GeminiAgent:
         self,
         api_key: str,
         model: str = "gemini-2.5-flash-lite",
-        classify_model: str = "gemini-3-flash-lite",
+        classify_model: str = "gemini-3.1-flash-lite",
     ):
         self._client = genai.Client(api_key=api_key)
         self._model = model

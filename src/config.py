@@ -54,7 +54,7 @@ def load_settings() -> Settings:
         gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         gemini_classify_model=os.environ.get(
-            "GEMINI_CLASSIFY_MODEL", "gemini-3-flash-lite"
+            "GEMINI_CLASSIFY_MODEL", "gemini-3.1-flash-lite"
         ),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
         scheduler_daily_hour=scheduler_daily_hour,

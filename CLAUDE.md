@@ -109,7 +109,7 @@ All config flows through `src/config.py` → `Settings` dataclass, loaded from e
 
 Required: `TELEGRAM_TOKEN`, `ANKIWEB_EMAIL`, `ANKIWEB_PASSWORD`, `GEMINI_API_KEY`.
 
-Common optional: `GEMINI_MODEL` (default `gemini-2.5-flash-lite`; used for quiz/judge/summary), `GEMINI_CLASSIFY_MODEL` (default `gemini-3-flash-lite`; used only for register classification), `ANKI_COLLECTION_PATH` (default `./data/anki/collection.anki2`), `DB_PATH` (default `./data/sensei.db`), `ALLOWED_USER_IDS` (comma-separated; empty = allow all), `LOG_LEVEL` (default `INFO` locally, `ERROR` in production via compose).
+Common optional: `GEMINI_MODEL` (default `gemini-2.5-flash-lite`; used for quiz/judge/summary), `GEMINI_CLASSIFY_MODEL` (default `gemini-3.1-flash-lite`; used only for register classification), `ANKI_COLLECTION_PATH` (default `./data/anki/collection.anki2`), `DB_PATH` (default `./data/sensei.db`), `ALLOWED_USER_IDS` (comma-separated; empty = allow all), `LOG_LEVEL` (default `INFO` locally, `ERROR` in production via compose).
 
 Scheduler: `SCHEDULER_DAILY_HOUR` (default `3`, range `0-23`) sets the hour the daily retag JobQueue fires. The job uses the host's local timezone — set the `TZ` env var (e.g. `TZ=Asia/Taipei`) to pin it.
 
