@@ -18,6 +18,10 @@ class Settings:
     gemini_classify_model: str
     gemini_timeout_seconds: int
     scheduler_daily_hour: int
+    tts_daily_hour: int
+    piper_voice_path: str
+    piper_voice: str
+    anki_media_path: str
     max_cards_per_session: int
     allowed_user_ids: set[int]
     log_level: str
@@ -43,6 +47,10 @@ def load_settings() -> Settings:
             f"SCHEDULER_DAILY_HOUR must be 0–23; got {scheduler_daily_hour}"
         )
 
+    tts_daily_hour = int(os.environ.get("TTS_DAILY_HOUR", "4"))
+    if not 0 <= tts_daily_hour <= 23:
+        raise ValueError(f"TTS_DAILY_HOUR must be 0–23; got {tts_daily_hour}")
+
     return Settings(
         telegram_token=os.environ["TELEGRAM_TOKEN"],
         ankiweb_email=os.environ["ANKIWEB_EMAIL"],
@@ -58,6 +66,14 @@ def load_settings() -> Settings:
         ),
         gemini_timeout_seconds=int(os.environ.get("GEMINI_TIMEOUT", "30")),
         scheduler_daily_hour=scheduler_daily_hour,
+        tts_daily_hour=tts_daily_hour,
+        piper_voice_path=os.environ.get(
+            "PIPER_VOICE_PATH", "/data/piper/en_US-libritts-high.onnx"
+        ),
+        piper_voice=os.environ.get("PIPER_VOICE", "en_US-libritts-high"),
+        anki_media_path=os.environ.get(
+            "ANKI_MEDIA_PATH", "/data/anki/collection.media"
+        ),
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
         allowed_user_ids={
             int(uid)
