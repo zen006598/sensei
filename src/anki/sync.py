@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import socket
 import threading
 from dataclasses import dataclass
@@ -67,6 +68,18 @@ class AnkiSyncer:
         async with collection_lock:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self.sync)
+
+    async def try_sync(self, label: str = "") -> bool:
+        """Like async_sync but never raises. Returns True on success, False otherwise.
+        For background batch use-cases where a sync failure must not abort the run."""
+        try:
+            result = await self.async_sync()
+        except Exception:
+            logging.exception("sync failed %s", label)
+            return False
+        if not result.success:
+            logging.warning("sync failed %s: %s", label, result.message)
+        return result.success
 
 
 def _extract_new_endpoint(sync_response) -> str:
