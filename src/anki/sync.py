@@ -12,6 +12,8 @@ from anki.sync import SyncAuth
 
 from src.anki._lock import collection_lock
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class SyncResult:
@@ -75,10 +77,10 @@ class AnkiSyncer:
         try:
             result = await self.async_sync()
         except Exception:
-            logging.exception("sync failed %s", label)
+            logger.exception("sync failed %s", label)
             return False
         if not result.success:
-            logging.warning("sync failed %s: %s", label, result.message)
+            logger.warning("sync failed %s: %s", label, result.message)
         return result.success
 
 
