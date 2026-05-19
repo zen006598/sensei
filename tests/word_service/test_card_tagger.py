@@ -123,6 +123,25 @@ async def test_classify_local_omits_academic_tag_when_negative():
 
 
 @pytest.mark.asyncio
+async def test_classify_local_preserves_stale_academic_tag_when_classifier_flips():
+    """Spec: fill-only, no overwrite. If sensei:academic is cached and
+    is_academic now returns False (e.g. AWL data updated), the tag stays."""
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock()  # must NOT be called
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=["sensei:common", "sensei:academic"])
+
+    delta = await tagger.classify_local(card)
+
+    assert delta.academic_added is False
+    assert "sensei:academic" in card.tags
+    classifier.is_academic.assert_not_called()  # short-circuited by _cached
+
+
+@pytest.mark.asyncio
 async def test_classify_register_writes_when_missing():
     anki = MagicMock()
     anki.update_card_tags = AsyncMock()

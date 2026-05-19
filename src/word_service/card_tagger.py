@@ -79,7 +79,10 @@ class CardTagger:
             card.tags.append(tag)
 
     async def classify_local(self, card: CardData) -> LocalDelta:
-        """Frequency + academic. No LLM. Idempotent: only writes missing tags."""
+        """Frequency + academic. No LLM. Idempotent: only writes missing tags.
+
+        The academic axis tags only positives — a False result writes nothing,
+        so non-academic cards remain untagged and re-checked cheaply each run."""
         frequency_added = False
         academic_added = False
 
