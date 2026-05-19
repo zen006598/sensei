@@ -3,12 +3,12 @@ from typing import Callable
 from wordfreq import zipf_frequency
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.schemas import Register
+from src.agent.schemas import Frequency, Register
 from src.anki.card_data import CardData
 from src.word_service._awl_data import _AWL_WORDS
 
 
-def _bucket(zipf: float) -> str:
+def _bucket(zipf: float) -> Frequency:
     """Map a Zipf score to common/rare/obsolete.
 
     Zipf reference: 7+ function words, 4-6 everyday, 2-4 specialised, <2 archaic, 0 unknown to corpus.
@@ -43,7 +43,7 @@ class WordClassifier:
         self._agent = agent
         self._zipf_fn = zipf_fn
 
-    def frequency(self, word: str) -> str:
+    def frequency(self, word: str) -> Frequency:
         """Returns 'common' | 'rare' | 'obsolete'. Sub-ms, no I/O."""
         return _bucket(self._zipf_fn(word.lower(), "en"))
 

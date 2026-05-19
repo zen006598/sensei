@@ -4,12 +4,18 @@ from typing import Literal, get_args
 from google.genai import types
 
 
+Frequency = Literal["common", "rare", "obsolete"]
+QuestionType = Literal["fill_in_blank", "spelling", "sentence"]
+Outcome = Literal[
+    "correct", "semantic_correct", "grammar_error", "vocab_error", "wrong"
+]
+ErrorType = Literal["grammar", "vocabulary", "spelling"]
 Register = Literal["formal", "informal", "slang", "literary", "neutral"]
 
 
 @dataclass
 class QuizResult:
-    question_type: str  # "fill_in_blank" | "spelling" | "sentence"
+    question_type: QuestionType
     question_text: str
     correct_answer: str
     hint: str = ""
@@ -17,8 +23,8 @@ class QuizResult:
 
 @dataclass
 class JudgeResult:
-    outcome: str  # "correct" | "semantic_correct" | "grammar_error" | "vocab_error" | "wrong"
-    error_type: str | None  # "grammar" | "vocabulary" | "spelling" | None
+    outcome: Outcome
+    error_type: ErrorType | None
     suggestion: str
 
 
@@ -27,7 +33,7 @@ QUIZ_SCHEMA = types.Schema(
     properties={
         "question_type": types.Schema(
             type=types.Type.STRING,
-            enum=["fill_in_blank", "spelling", "sentence"],
+            enum=list(get_args(QuestionType)),
         ),
         "question_text": types.Schema(type=types.Type.STRING),
         "correct_answer": types.Schema(type=types.Type.STRING),
@@ -41,17 +47,11 @@ JUDGE_SCHEMA = types.Schema(
     properties={
         "outcome": types.Schema(
             type=types.Type.STRING,
-            enum=[
-                "correct",
-                "semantic_correct",
-                "grammar_error",
-                "vocab_error",
-                "wrong",
-            ],
+            enum=list(get_args(Outcome)),
         ),
         "error_type": types.Schema(
             type=types.Type.STRING,
-            enum=["grammar", "vocabulary", "spelling"],
+            enum=list(get_args(ErrorType)),
         ),
         "suggestion": types.Schema(type=types.Type.STRING),
     },

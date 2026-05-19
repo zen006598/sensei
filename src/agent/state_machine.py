@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass, field
 
 from src.agent.gemini_agent import GeminiAgent
-from src.agent.schemas import JudgeResult, QuizResult
+from src.agent.schemas import Frequency, JudgeResult, Outcome, QuestionType, QuizResult
 from src.anki.client import AnkiClient
 from src.anki.sync import AnkiSyncer
 from src.db.conversation_session_store import ConversationSessionStore
@@ -16,7 +16,7 @@ from src.word_service.card_tagger import CardTagger
 @dataclass
 class _ActiveSession:
     card: CardData
-    frequency: str
+    frequency: Frequency
     db_session_id: int
     current_question: QuizResult
     attempt_count: int = 0
@@ -26,10 +26,10 @@ class _ActiveSession:
 
 @dataclass
 class SubmitResult:
-    outcome: str  # "correct" | "wrong" | "semantic_correct" | "grammar_error" | "vocab_error"
+    outcome: Outcome
     suggestion: str
     correct_answer: str
-    question_type: str
+    question_type: QuestionType
     hint: str
     session_ended: bool
     new_session_started: bool
@@ -306,7 +306,7 @@ class QuizStateMachine:
         return question
 
     async def _next_question(
-        self, session: _ActiveSession, forced_type: str | None = None
+        self, session: _ActiveSession, forced_type: QuestionType | None = None
     ) -> QuizResult:
         frequency, register = await self._tagger.classify(session.card)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
