@@ -10,13 +10,7 @@ from src.db.conversation_session_store import ConversationSessionStore
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.anki.card_data import CardData
-from src.word_service.word_classifier import (
-    ACADEMICS,
-    FREQUENCIES,
-    REGISTERS,
-    TAG_PREFIX,
-    WordClassifier,
-)
+from src.word_service.card_tagger import CardTagger
 
 
 @dataclass
@@ -49,7 +43,7 @@ class QuizStateMachine:
         anki_client: AnkiClient,
         anki_syncer: AnkiSyncer,
         agent: GeminiAgent,
-        classifier: WordClassifier,
+        tagger: CardTagger,
         prefs_store: UserPrefsStore,
         errors_store: ErrorRecordStore,
         sessions_store: ConversationSessionStore,
@@ -57,7 +51,7 @@ class QuizStateMachine:
         self._anki = anki_client
         self._syncer = anki_syncer
         self._agent = agent
-        self._classifier = classifier
+        self._tagger = tagger
         self._prefs = prefs_store
         self._errors = errors_store
         self._sessions = sessions_store
@@ -291,9 +285,7 @@ class QuizStateMachine:
         return await self._begin_card(cards[0])
 
     async def _begin_card(self, card: CardData) -> QuizResult:
-        frequency = await self._classify_frequency(card)
-        register = await self._classify_register(card)
-        await self._classify_academic(card)
+        frequency, register = await self._tagger.classify(card)
         recent_errors = self._errors.recent_for_card(card.card_id)
         last_summary = self._sessions.last_summary_for_card(card.card_id)
         question = await self._agent.generate_question(
@@ -316,9 +308,7 @@ class QuizStateMachine:
     async def _next_question(
         self, session: _ActiveSession, forced_type: str | None = None
     ) -> QuizResult:
-        frequency = await self._classify_frequency(session.card)
-        register = await self._classify_register(session.card)
-        await self._classify_academic(session.card)
+        frequency, register = await self._tagger.classify(session.card)
         recent_errors = self._errors.recent_for_card(session.card.card_id)
         last_summary = self._sessions.last_summary_for_card(session.card.card_id)
         question = await self._agent.generate_question(
@@ -359,50 +349,3 @@ class QuizStateMachine:
         )
         await self._syncer.async_sync()
         return await self._anki.get_due_count()
-
-    @staticmethod
-    def _cached(card: CardData, values: frozenset[str]) -> str | None:
-        """Read a `sensei:<value>` tag from card.tags whose value is in `values`. None if absent."""
-        for tag in card.tags:
-            if tag.startswith(TAG_PREFIX):
-                value = tag.removeprefix(TAG_PREFIX)
-                if value in values:
-                    return value
-        return None
-
-    async def _persist_tag(self, card: CardData, value: str) -> None:
-        """Write `sensei:<value>` to the Anki note and reflect it in card.tags."""
-        tag = f"{TAG_PREFIX}{value}"
-        if tag not in card.tags:
-            await self._anki.update_card_tags(card.card_id, [tag])
-            card.tags.append(tag)
-
-    async def _classify_frequency(self, card: CardData) -> str:
-        cached = self._cached(card, FREQUENCIES)
-        if cached:
-            return cached
-        value = self._classifier.frequency(card.front)
-        await self._persist_tag(card, value)
-        return value
-
-    async def _classify_register(self, card: CardData) -> str | None:
-        """Returns the register, or None if the LLM call failed. Persists a tag on success;
-        on failure, leaves the card unchanged so a future quiz retries the call."""
-        cached = self._cached(card, REGISTERS)
-        if cached:
-            return cached
-        value = await self._classifier.register(card)
-        if value is None:
-            return None
-        await self._persist_tag(card, value)
-        return value
-
-    async def _classify_academic(self, card: CardData) -> bool:
-        """Only the positive case is tagged (`sensei:academic`); a non-academic card has no
-        tag, so the AWL lookup re-runs each quiz — cheap (set membership)."""
-        if self._cached(card, ACADEMICS):
-            return True
-        is_academic = self._classifier.is_academic(card.front)
-        if is_academic:
-            await self._persist_tag(card, "academic")
-        return is_academic

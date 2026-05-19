@@ -187,3 +187,62 @@ async def test_classify_register_records_failure_on_llm_none():
     assert delta.register_added is False
     assert delta.failed is True
     anki.update_card_tags.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_classify_returns_frequency_and_register_on_cold_card():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="common")
+    classifier.is_academic = MagicMock(return_value=False)
+    classifier.register = AsyncMock(return_value="neutral")
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    frequency, register = await tagger.classify(card)
+
+    assert frequency == "common"
+    assert register == "neutral"
+    assert "sensei:common" in card.tags
+    assert "sensei:neutral" in card.tags
+
+
+@pytest.mark.asyncio
+async def test_classify_returns_none_register_when_llm_fails():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock(return_value="rare")
+    classifier.is_academic = MagicMock(return_value=False)
+    classifier.register = AsyncMock(return_value=None)
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=[])
+
+    frequency, register = await tagger.classify(card)
+
+    assert frequency == "rare"
+    assert register is None
+    assert "sensei:rare" in card.tags
+    assert all(not t.startswith("sensei:") or t == "sensei:rare" for t in card.tags)
+
+
+@pytest.mark.asyncio
+async def test_classify_uses_cache_for_all_three_axes():
+    anki = MagicMock()
+    anki.update_card_tags = AsyncMock()
+    classifier = MagicMock()
+    classifier.frequency = MagicMock()
+    classifier.is_academic = MagicMock()
+    classifier.register = AsyncMock()
+    tagger = CardTagger(anki, classifier)
+    card = _card(tags=["sensei:common", "sensei:formal", "sensei:academic"])
+
+    frequency, register = await tagger.classify(card)
+
+    assert frequency == "common"
+    assert register == "formal"
+    classifier.frequency.assert_not_called()
+    classifier.is_academic.assert_not_called()
+    classifier.register.assert_not_awaited()
+    anki.update_card_tags.assert_not_awaited()

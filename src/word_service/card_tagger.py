@@ -78,6 +78,19 @@ class CardTagger:
             await self._anki.update_card_tags(card.card_id, [tag])
             card.tags.append(tag)
 
+    async def classify(self, card: CardData) -> tuple[str, str | None]:
+        """Quiz hot path. Applies all 3 axes if missing.
+        Returns (frequency, register). `register` is None if its LLM call failed."""
+        await self.classify_local(card)
+        # Frequency is always present after classify_local (it ran or was already cached);
+        # read it back so callers don't need to compute it themselves.
+        frequency = self._cached(card, FREQUENCIES)
+        assert frequency is not None, "classify_local must leave a frequency tag"
+
+        register_delta = await self.classify_register(card)
+        register = self._cached(card, REGISTERS) if not register_delta.failed else None
+        return frequency, register
+
     async def classify_local(self, card: CardData) -> LocalDelta:
         """Frequency + academic. No LLM. Idempotent: only writes missing tags.
 

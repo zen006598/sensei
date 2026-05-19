@@ -13,6 +13,7 @@ from src.db.error_record import ErrorRecord
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.anki.card_data import CardData
+from src.word_service.card_tagger import CardTagger
 from src.word_service.word_classifier import WordClassifier
 
 
@@ -42,8 +43,9 @@ def _setup(zipf_fn=lambda w, lang: 5.5):
     syncer.async_sync = AsyncMock()
 
     classifier = WordClassifier(agent, zipf_fn=zipf_fn)
+    tagger = CardTagger(anki, classifier)
 
-    sm = QuizStateMachine(anki, syncer, agent, classifier, prefs, errors, sessions)
+    sm = QuizStateMachine(anki, syncer, agent, tagger, prefs, errors, sessions)
     return sm, agent, anki, engine, tmp_db
 
 

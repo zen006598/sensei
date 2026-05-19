@@ -17,6 +17,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
+from src.word_service.card_tagger import CardTagger
 from src.word_service.word_classifier import WordClassifier
 
 
@@ -47,11 +48,12 @@ def main() -> None:
         classify_model=settings.gemini_classify_model,
     )
     classifier = WordClassifier(agent)
+    tagger = CardTagger(anki_client, classifier)
     state_machine = QuizStateMachine(
         anki_client,
         anki_syncer,
         agent,
-        classifier,
+        tagger,
         prefs_store,
         errors_store,
         sessions_store,
