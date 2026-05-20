@@ -53,7 +53,6 @@ def main() -> None:
     generator = TTSGenerator(
         anki=anki_client,
         piper_model_path=settings.piper_voice_path,
-        media_dir=settings.anki_media_path,
         voice_name=settings.piper_voice,
         sound_field=settings.tts_sound_field,
     )

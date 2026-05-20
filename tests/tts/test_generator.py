@@ -17,18 +17,17 @@ def _card(card_id: int = 1, front: str = "hello") -> CardData:
     return CardData(card_id=card_id, front=front, back="", tags=[], deck_name="d")
 
 
-def _generator(
-    sound_field: str = "",
-    field_writer=None,
-    media_dir: str = "/tmp/media",
-):
+def _generator(sound_field: str = "", field_writer=None):
     anki = MagicMock()
     anki.get_card_field = AsyncMock(return_value=sound_field)
     anki.set_card_field = AsyncMock(side_effect=field_writer)
+    # add_media echoes the requested name by default (no rename); it is the
+    # seam that registers the file in Anki's media DB for sync.
+    anki.add_media = AsyncMock(side_effect=lambda name, data: name)
+    anki.trash_media = AsyncMock()
     gen = TTSGenerator(
         anki=anki,
         piper_model_path="/dev/null/voice.onnx",
-        media_dir=media_dir,
         voice_name="en_US-libritts-high",
     )
     return gen, anki
@@ -40,12 +39,13 @@ async def test_generate_skips_when_sound_field_already_set():
     result = await gen.generate(_card())
 
     assert result == TtsResult(generated=False, skipped=True, failed=False)
+    anki.add_media.assert_not_awaited()
     anki.set_card_field.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_generate_synthesises_writes_media_and_sets_field(tmp_path):
-    gen, anki = _generator(media_dir=str(tmp_path))
+async def test_generate_registers_media_via_db_and_sets_field():
+    gen, anki = _generator()
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",
@@ -54,15 +54,28 @@ async def test_generate_synthesises_writes_media_and_sets_field(tmp_path):
         result = await gen.generate(_card(card_id=42, front="hello"))
 
     assert result == TtsResult(generated=True, skipped=False, failed=False)
-    expected_path = tmp_path / "sensei_42.mp3"
-    assert expected_path.exists()
-    assert expected_path.read_bytes() == b"FAKE_MP3_BYTES"
+    # The MP3 must go through the media DB (not a raw filesystem write) so it
+    # uploads to AnkiWeb and reaches other devices.
+    anki.add_media.assert_awaited_once_with("sensei_42.mp3", b"FAKE_MP3_BYTES")
     anki.set_card_field.assert_awaited_once_with(42, "Sound", "[sound:sensei_42.mp3]")
 
 
 @pytest.mark.asyncio
-async def test_generate_reports_failure_when_synthesis_raises(tmp_path):
-    gen, anki = _generator(media_dir=str(tmp_path))
+async def test_generate_uses_stored_filename_when_media_renamed():
+    """add_media may rename for uniqueness; the field must reference the actual
+    stored name, not the requested one."""
+    gen, anki = _generator()
+    anki.add_media = AsyncMock(return_value="sensei_42_1.mp3")
+
+    with patch("src.tts.generator._synthesize_to_mp3_bytes", return_value=b"X"):
+        await gen.generate(_card(card_id=42))
+
+    anki.set_card_field.assert_awaited_once_with(42, "Sound", "[sound:sensei_42_1.mp3]")
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_failure_when_synthesis_raises():
+    gen, anki = _generator()
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",
@@ -73,35 +86,31 @@ async def test_generate_reports_failure_when_synthesis_raises(tmp_path):
     assert result.generated is False
     assert result.failed is True
     assert result.failure_reason == "synth"
+    anki.add_media.assert_not_awaited()
     anki.set_card_field.assert_not_awaited()
-    assert not any(tmp_path.iterdir())  # no partial files left behind
 
 
 @pytest.mark.asyncio
-async def test_generate_reports_failure_when_field_write_raises(tmp_path):
-    gen, anki = _generator(media_dir=str(tmp_path))
-    anki.set_card_field = AsyncMock(side_effect=KeyError("sound"))
+async def test_generate_reports_failure_when_field_write_raises():
+    gen, anki = _generator()
+    anki.set_card_field = AsyncMock(side_effect=KeyError("Sound"))
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",
         return_value=b"X",
     ):
-        result = await gen.generate(_card())
+        result = await gen.generate(_card(card_id=9))
 
     assert result.failed is True
     assert result.failure_reason == "field_write"
-    assert not any(tmp_path.iterdir()), "orphan MP3 should have been cleaned up"
+    # the orphan media file must be trashed via the media DB
+    anki.trash_media.assert_awaited_once_with(["sensei_9.mp3"])
 
 
 @pytest.mark.asyncio
-async def test_generate_reports_failure_when_media_write_raises(monkeypatch, tmp_path):
-    """Disk write failure routes through 'media_write' reason."""
-    gen, _ = _generator(media_dir=str(tmp_path))
-
-    def broken_write_bytes(self, data):
-        raise OSError("disk full")
-
-    monkeypatch.setattr("pathlib.Path.write_bytes", broken_write_bytes)
+async def test_generate_reports_failure_when_media_write_raises():
+    gen, anki = _generator()
+    anki.add_media = AsyncMock(side_effect=OSError("media db locked"))
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",
@@ -111,20 +120,21 @@ async def test_generate_reports_failure_when_media_write_raises(monkeypatch, tmp
 
     assert result.failed is True
     assert result.failure_reason == "media_write"
+    anki.set_card_field.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_generate_uses_configured_sound_field_name(tmp_path):
+async def test_generate_uses_configured_sound_field_name():
     """The Anki note's audio field name is configurable (note types vary, e.g.
     'Sound' vs 'Audio'); generate() must read and write that field, not a
     hardcoded one."""
     anki = MagicMock()
     anki.get_card_field = AsyncMock(return_value="")
     anki.set_card_field = AsyncMock()
+    anki.add_media = AsyncMock(side_effect=lambda name, data: name)
     gen = TTSGenerator(
         anki=anki,
         piper_model_path="/dev/null/voice.onnx",
-        media_dir=str(tmp_path),
         sound_field="Audio",
     )
 
@@ -162,7 +172,6 @@ async def test_ensure_voice_available_swallows_download_failure(tmp_path):
 def _generator_with_cards(
     card_map: dict[int, CardData],
     sound_fields: dict[int, str] | None = None,
-    media_dir: str = "/tmp/media",
 ):
     sound_fields = sound_fields or {}
     anki = MagicMock()
@@ -172,26 +181,25 @@ def _generator_with_cards(
         side_effect=lambda cid, name: sound_fields.get(cid, "")
     )
     anki.set_card_field = AsyncMock()
+    anki.add_media = AsyncMock(side_effect=lambda name, data: name)
+    anki.trash_media = AsyncMock()
     gen = TTSGenerator(
         anki=anki,
         piper_model_path="/dev/null/voice.onnx",
-        media_dir=media_dir,
         voice_name="en_US-libritts-high",
     )
     return gen, anki
 
 
 @pytest.mark.asyncio
-async def test_generate_all_filters_by_deck_and_accumulates_stats(tmp_path):
+async def test_generate_all_filters_by_deck_and_accumulates_stats():
     cards = {
         1: _card(card_id=1, front="alpha"),
         2: _card(card_id=2, front="beta"),
         3: _card(card_id=3, front="gamma"),
     }
     sounds = {2: "[sound:user_2.mp3]"}  # card 2 pre-tagged
-    gen, anki = _generator_with_cards(
-        cards, sound_fields=sounds, media_dir=str(tmp_path)
-    )
+    gen, anki = _generator_with_cards(cards, sound_fields=sounds)
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",
@@ -209,9 +217,9 @@ async def test_generate_all_filters_by_deck_and_accumulates_stats(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_all_swallows_per_card_failures(tmp_path):
+async def test_generate_all_swallows_per_card_failures():
     cards = {1: _card(card_id=1), 2: _card(card_id=2)}
-    gen, _ = _generator_with_cards(cards, media_dir=str(tmp_path))
+    gen, _ = _generator_with_cards(cards)
 
     call_count = {"n": 0}
 
@@ -233,9 +241,9 @@ async def test_generate_all_swallows_per_card_failures(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_all_raises_when_batch_already_running(tmp_path):
+async def test_generate_all_raises_when_batch_already_running():
     cards = {1: _card(card_id=1)}
-    gen, _ = _generator_with_cards(cards, media_dir=str(tmp_path))
+    gen, _ = _generator_with_cards(cards)
 
     # Hold the lock via an explicit acquire to simulate "another batch running"
     await gen._tts_lock.acquire()
@@ -247,12 +255,12 @@ async def test_generate_all_raises_when_batch_already_running(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_all_counts_get_card_exception_as_write_failure(tmp_path):
+async def test_generate_all_counts_get_card_exception_as_write_failure():
     """If get_card itself raises (e.g. card deleted between get_all_card_ids and
     get_card), the failure is captured as write_failures in the outer try/except,
     not tts_failures."""
     cards = {1: _card(card_id=1)}
-    gen, anki = _generator_with_cards(cards, media_dir=str(tmp_path))
+    gen, anki = _generator_with_cards(cards)
     anki.get_card = AsyncMock(side_effect=RuntimeError("card vanished"))
 
     stats = await gen.generate_all(deck="English")
@@ -264,12 +272,12 @@ async def test_generate_all_counts_get_card_exception_as_write_failure(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_generate_all_field_write_failure_counted_as_write_failure(tmp_path):
+async def test_generate_all_field_write_failure_counted_as_write_failure():
     """Field-write failures inside generate() should land in write_failures
     (not tts_failures) per the spec."""
     cards = {1: _card(card_id=1)}
-    gen, anki = _generator_with_cards(cards, media_dir=str(tmp_path))
-    anki.set_card_field = AsyncMock(side_effect=KeyError("sound"))
+    gen, anki = _generator_with_cards(cards)
+    anki.set_card_field = AsyncMock(side_effect=KeyError("Sound"))
 
     with patch(
         "src.tts.generator._synthesize_to_mp3_bytes",

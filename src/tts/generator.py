@@ -67,13 +67,11 @@ class TTSGenerator:
         self,
         anki: AnkiClient,
         piper_model_path: str,
-        media_dir: str,
         voice_name: str = "en_US-libritts-high",
         sound_field: str = "Sound",
     ):
         self._anki = anki
         self._model_path = piper_model_path
-        self._media_dir = Path(media_dir)
         self._voice_name = voice_name
         self._sound_field = sound_field
         self._tts_lock = asyncio.Lock()
@@ -131,17 +129,13 @@ class TTSGenerator:
                 generated=False, skipped=False, failed=True, failure_reason="synth"
             )
 
-        filename = f"sensei_{card.card_id}.mp3"
-        media_path = self._media_dir / filename
         try:
-            self._media_dir.mkdir(parents=True, exist_ok=True)
-            media_path.write_bytes(mp3_bytes)
+            filename = await self._anki.add_media(
+                f"sensei_{card.card_id}.mp3", mp3_bytes
+            )
         except Exception:
             logger.warning(
-                "tts media write failed for card %s (path=%s)",
-                card.card_id,
-                media_path,
-                exc_info=True,
+                "tts media write failed for card %s", card.card_id, exc_info=True
             )
             return TtsResult(
                 generated=False,
@@ -159,8 +153,8 @@ class TTSGenerator:
                 "tts field write failed for card %s", card.card_id, exc_info=True
             )
             try:
-                media_path.unlink(missing_ok=True)
-            except OSError:
+                await self._anki.trash_media([filename])
+            except Exception:
                 pass
             return TtsResult(
                 generated=False,

@@ -22,7 +22,6 @@ class Settings:
     piper_voice_path: str
     piper_voice: str
     tts_sound_field: str
-    anki_media_path: str
     max_cards_per_session: int
     allowed_user_ids: set[int]
     log_level: str
@@ -73,9 +72,6 @@ def load_settings() -> Settings:
         ),
         piper_voice=os.environ.get("PIPER_VOICE", "en_US-libritts-high"),
         tts_sound_field=os.environ.get("TTS_SOUND_FIELD", "Sound"),
-        anki_media_path=os.environ.get(
-            "ANKI_MEDIA_PATH", "/data/anki/collection.media"
-        ),
         max_cards_per_session=int(os.environ.get("MAX_CARDS_PER_SESSION", "20")),
         allowed_user_ids={
             int(uid)
