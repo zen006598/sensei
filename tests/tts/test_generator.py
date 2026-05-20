@@ -88,3 +88,4 @@ async def test_generate_reports_failure_when_field_write_raises(tmp_path):
         result = await gen.generate(_card())
 
     assert result.failed is True
+    assert not any(tmp_path.iterdir()), "orphan MP3 should have been cleaned up"
