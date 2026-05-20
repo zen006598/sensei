@@ -16,6 +16,10 @@ services:
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DB_PATH=/data/db/sensei.db
       - LOG_LEVEL=WARNING
+      - TTS_DAILY_HOUR=4
+      - PIPER_VOICE_PATH=/data/piper/en_US-libritts-high.onnx
+      - PIPER_VOICE=en_US-libritts-high
+      - ANKI_MEDIA_PATH=/data/anki/collection.media
     deploy:
       resources:
         limits:
@@ -29,7 +33,9 @@ services:
     volumes:
       - anki_data:/data/anki
       - sensei_db:/data/db
+      - piper_models:/data/piper:ro
 
 volumes:
   anki_data:
   sensei_db:
+  piper_models:
