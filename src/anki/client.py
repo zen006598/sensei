@@ -38,7 +38,7 @@ class AnkiClient:
     async def get_due_cards(
         self, limit: int = 20, deck: str | None = None, mode: str = "default"
     ) -> list[CardData]:
-        def fn(col):
+        def _select_due(col):
             deck_prefix = f'deck:"{deck}" ' if deck else ""
 
             def _shuffled(filt: str) -> list[int]:
@@ -57,18 +57,18 @@ class AnkiClient:
             cards = [self._card_to_data(col, cid) for cid in card_ids]
             return [c for c in cards if c.front or c.back]
 
-        return await self._run_locked(fn)
+        return await self._run_locked(_select_due)
 
     async def answer_card(self, card_id: int, ease: int) -> None:
-        def fn(col):
+        def _answer(col):
             card = col.get_card(card_id)
             card.start_timer()
             col.sched.answerCard(card, ease)
 
-        await self._run_locked(fn)
+        await self._run_locked(_answer)
 
     async def update_card_tags(self, card_id: int, tags_to_add: list[str]) -> None:
-        def fn(col):
+        def _add_tags(col):
             card = col.get_card(card_id)
             note = card.note()
             for tag in tags_to_add:
@@ -76,7 +76,7 @@ class AnkiClient:
                     note.tags.append(tag)
             col.update_note(note)
 
-        await self._run_locked(fn)
+        await self._run_locked(_add_tags)
 
     async def get_due_count(self) -> int:
         return await self._run_locked(lambda col: len(col.find_cards("is:due")))
@@ -95,28 +95,22 @@ class AnkiClient:
         """Read a named field's value. Returns "" if the field is absent on
         this card's note type."""
 
-        def fn(col):
+        def _read_field(col):
             note = col.get_card(card_id).note()
-            idx = self._field_index(note, field_name)
-            if idx is None:
-                return ""
-            return note.fields[idx]
+            return note[field_name] if field_name in note else ""
 
-        return await self._run_locked(fn)
+        return await self._run_locked(_read_field)
 
     async def set_card_field(self, card_id: int, field_name: str, value: str) -> None:
         """Write a named field's value. Raises KeyError if the field is absent
         on this card's note type."""
 
-        def fn(col):
+        def _write_field(col):
             note = col.get_card(card_id).note()
-            idx = self._field_index(note, field_name)
-            if idx is None:
-                raise KeyError(field_name)
-            note.fields[idx] = value
+            note[field_name] = value  # raises KeyError if the field is absent
             col.update_note(note)
 
-        await self._run_locked(fn)
+        await self._run_locked(_write_field)
 
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)
@@ -132,13 +126,6 @@ class AnkiClient:
             tags=note.tags,
             deck_name=deck_name,
         )
-
-    @staticmethod
-    def _field_index(note, field_name: str) -> int | None:
-        for i, f in enumerate(note.note_type()["flds"]):
-            if f["name"] == field_name:
-                return i
-        return None
 
 
 def _strip_html(html: str) -> str:
