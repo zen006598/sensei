@@ -162,3 +162,19 @@ async def test_set_card_field_raises_keyerror_for_unknown_field():
 
     with pytest.raises(KeyError, match="sound"):
         await client.set_card_field(42, "sound", "x")
+
+
+@pytest.mark.asyncio
+async def test_add_media_coerces_bytearray_to_bytes():
+    """lameenc yields bytearray, but Anki's protobuf media API rejects anything
+    that isn't strict bytes — add_media must coerce."""
+    col = MagicMock()
+    col.media.write_data.return_value = "sensei_42.mp3"
+    client = _client_with_col(col)
+
+    stored = await client.add_media("sensei_42.mp3", bytearray(b"MP3"))
+
+    assert stored == "sensei_42.mp3"
+    name_arg, data_arg = col.media.write_data.call_args.args
+    assert name_arg == "sensei_42.mp3"
+    assert type(data_arg) is bytes and data_arg == b"MP3"

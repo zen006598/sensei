@@ -59,7 +59,8 @@ def _synthesize_to_mp3_bytes(model_path: str, voice_name: str, text: str) -> byt
     encoder.set_in_sample_rate(voice.config.sample_rate)
     encoder.set_channels(1)
     encoder.set_quality(2)
-    return encoder.encode(pcm) + encoder.flush()
+    # lameenc returns bytearray; Anki's protobuf media API requires strict bytes.
+    return bytes(encoder.encode(pcm) + encoder.flush())
 
 
 class TTSGenerator:

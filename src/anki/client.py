@@ -117,7 +117,11 @@ class AnkiClient:
         synced to AnkiWeb. Returns the stored filename (possibly renamed to keep
         it unique). A raw filesystem write into the media folder is NOT tracked
         and never uploads — always go through here."""
-        return await self._run_locked(lambda col: col.media.write_data(filename, data))
+        # Anki's protobuf media API rejects bytearray/memoryview; coerce to bytes.
+        payload = bytes(data)
+        return await self._run_locked(
+            lambda col: col.media.write_data(filename, payload)
+        )
 
     async def trash_media(self, filenames: list[str]) -> None:
         """Remove media files via the media DB so the DB stays consistent."""
