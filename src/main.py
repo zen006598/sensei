@@ -55,6 +55,7 @@ def main() -> None:
         piper_model_path=settings.piper_voice_path,
         media_dir=settings.anki_media_path,
         voice_name=settings.piper_voice,
+        sound_field=settings.tts_sound_field,
     )
     generator.ensure_voice_available()
     state_machine = QuizStateMachine(
