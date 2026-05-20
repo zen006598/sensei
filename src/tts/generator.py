@@ -69,11 +69,13 @@ class TTSGenerator:
         piper_model_path: str,
         media_dir: str,
         voice_name: str = "en_US-libritts-high",
+        sound_field: str = "Sound",
     ):
         self._anki = anki
         self._model_path = piper_model_path
         self._media_dir = Path(media_dir)
         self._voice_name = voice_name
+        self._sound_field = sound_field
         self._tts_lock = asyncio.Lock()
 
     @property
@@ -105,7 +107,9 @@ class TTSGenerator:
 
     async def generate(self, card: CardData) -> TtsResult:
         """Per-card. Idempotent: skips if `sound` field is non-empty."""
-        existing = (await self._anki.get_card_field(card.card_id, "sound")).strip()
+        existing = (
+            await self._anki.get_card_field(card.card_id, self._sound_field)
+        ).strip()
         if existing:
             return TtsResult(generated=False, skipped=True, failed=False)
 
@@ -148,7 +152,7 @@ class TTSGenerator:
 
         try:
             await self._anki.set_card_field(
-                card.card_id, "sound", f"[sound:{filename}]"
+                card.card_id, self._sound_field, f"[sound:{filename}]"
             )
         except Exception:
             logger.warning(

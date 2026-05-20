@@ -57,7 +57,7 @@ async def test_generate_synthesises_writes_media_and_sets_field(tmp_path):
     expected_path = tmp_path / "sensei_42.mp3"
     assert expected_path.exists()
     assert expected_path.read_bytes() == b"FAKE_MP3_BYTES"
-    anki.set_card_field.assert_awaited_once_with(42, "sound", "[sound:sensei_42.mp3]")
+    anki.set_card_field.assert_awaited_once_with(42, "Sound", "[sound:sensei_42.mp3]")
 
 
 @pytest.mark.asyncio
@@ -111,6 +111,28 @@ async def test_generate_reports_failure_when_media_write_raises(monkeypatch, tmp
 
     assert result.failed is True
     assert result.failure_reason == "media_write"
+
+
+@pytest.mark.asyncio
+async def test_generate_uses_configured_sound_field_name(tmp_path):
+    """The Anki note's audio field name is configurable (note types vary, e.g.
+    'Sound' vs 'Audio'); generate() must read and write that field, not a
+    hardcoded one."""
+    anki = MagicMock()
+    anki.get_card_field = AsyncMock(return_value="")
+    anki.set_card_field = AsyncMock()
+    gen = TTSGenerator(
+        anki=anki,
+        piper_model_path="/dev/null/voice.onnx",
+        media_dir=str(tmp_path),
+        sound_field="Audio",
+    )
+
+    with patch("src.tts.generator._synthesize_to_mp3_bytes", return_value=b"X"):
+        await gen.generate(_card(card_id=7))
+
+    anki.get_card_field.assert_awaited_once_with(7, "Audio")
+    anki.set_card_field.assert_awaited_once_with(7, "Audio", "[sound:sensei_7.mp3]")
 
 
 @pytest.mark.asyncio

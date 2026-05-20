@@ -21,6 +21,7 @@ class Settings:
     tts_daily_hour: int
     piper_voice_path: str
     piper_voice: str
+    tts_sound_field: str
     anki_media_path: str
     max_cards_per_session: int
     allowed_user_ids: set[int]
@@ -71,6 +72,7 @@ def load_settings() -> Settings:
             "PIPER_VOICE_PATH", "/data/piper/en_US-libritts-high.onnx"
         ),
         piper_voice=os.environ.get("PIPER_VOICE", "en_US-libritts-high"),
+        tts_sound_field=os.environ.get("TTS_SOUND_FIELD", "Sound"),
         anki_media_path=os.environ.get(
             "ANKI_MEDIA_PATH", "/data/anki/collection.media"
         ),
