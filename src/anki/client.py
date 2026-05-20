@@ -112,6 +112,17 @@ class AnkiClient:
 
         await self._run_locked(_write_field)
 
+    async def add_media(self, filename: str, data: bytes) -> str:
+        """Write a media file through Anki's media DB so it is registered and
+        synced to AnkiWeb. Returns the stored filename (possibly renamed to keep
+        it unique). A raw filesystem write into the media folder is NOT tracked
+        and never uploads — always go through here."""
+        return await self._run_locked(lambda col: col.media.write_data(filename, data))
+
+    async def trash_media(self, filenames: list[str]) -> None:
+        """Remove media files via the media DB so the DB stays consistent."""
+        await self._run_locked(lambda col: col.media.trash_files(filenames))
+
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)
         note = card.note()

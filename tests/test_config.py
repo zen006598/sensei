@@ -59,9 +59,3 @@ def test_piper_voice_default(base_env):
     base_env.delenv("PIPER_VOICE", raising=False)
     s = load_settings()
     assert s.piper_voice == "en_US-libritts-high"
-
-
-def test_anki_media_path_default(base_env):
-    base_env.delenv("ANKI_MEDIA_PATH", raising=False)
-    s = load_settings()
-    assert s.anki_media_path == "/data/anki/collection.media"

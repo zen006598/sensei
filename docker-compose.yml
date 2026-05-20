@@ -20,7 +20,6 @@ services:
       - PIPER_VOICE_PATH=/data/piper/en_US-libritts-high.onnx
       - PIPER_VOICE=en_US-libritts-high
       - TTS_SOUND_FIELD=Sound
-      - ANKI_MEDIA_PATH=/data/anki/collection.media
     deploy:
       resources:
         limits:
