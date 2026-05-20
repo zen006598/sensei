@@ -38,7 +38,7 @@ class AnkiClient:
     async def get_due_cards(
         self, limit: int = 20, deck: str | None = None, mode: str = "default"
     ) -> list[CardData]:
-        def fn(col):
+        def _select_due(col):
             deck_prefix = f'deck:"{deck}" ' if deck else ""
 
             def _shuffled(filt: str) -> list[int]:
@@ -57,18 +57,18 @@ class AnkiClient:
             cards = [self._card_to_data(col, cid) for cid in card_ids]
             return [c for c in cards if c.front or c.back]
 
-        return await self._run_locked(fn)
+        return await self._run_locked(_select_due)
 
     async def answer_card(self, card_id: int, ease: int) -> None:
-        def fn(col):
+        def _answer(col):
             card = col.get_card(card_id)
             card.start_timer()
             col.sched.answerCard(card, ease)
 
-        await self._run_locked(fn)
+        await self._run_locked(_answer)
 
     async def update_card_tags(self, card_id: int, tags_to_add: list[str]) -> None:
-        def fn(col):
+        def _add_tags(col):
             card = col.get_card(card_id)
             note = card.note()
             for tag in tags_to_add:
@@ -76,18 +76,41 @@ class AnkiClient:
                     note.tags.append(tag)
             col.update_note(note)
 
-        await self._run_locked(fn)
+        await self._run_locked(_add_tags)
 
     async def get_due_count(self) -> int:
         return await self._run_locked(lambda col: len(col.find_cards("is:due")))
 
-    async def get_all_card_ids(self) -> list[int]:
-        """Returns ids of every card in the collection. Cheap; one lock acquire."""
-        return await self._run_locked(lambda col: list(col.find_cards("")))
+    async def get_all_card_ids(self, deck: str | None = None) -> list[int]:
+        """Returns ids of every card in the collection, optionally filtered by
+        deck name. Cheap; one lock acquire."""
+        query = f'deck:"{deck}"' if deck else ""
+        return await self._run_locked(lambda col: list(col.find_cards(query)))
 
     async def get_card(self, card_id: int) -> CardData:
         """Fetch a single card as CardData, regardless of due/new state."""
         return await self._run_locked(lambda col: self._card_to_data(col, card_id))
+
+    async def get_card_field(self, card_id: int, field_name: str) -> str:
+        """Read a named field's value. Returns "" if the field is absent on
+        this card's note type."""
+
+        def _read_field(col):
+            note = col.get_card(card_id).note()
+            return note[field_name] if field_name in note else ""
+
+        return await self._run_locked(_read_field)
+
+    async def set_card_field(self, card_id: int, field_name: str, value: str) -> None:
+        """Write a named field's value. Raises KeyError if the field is absent
+        on this card's note type."""
+
+        def _write_field(col):
+            note = col.get_card(card_id).note()
+            note[field_name] = value  # raises KeyError if the field is absent
+            col.update_note(note)
+
+        await self._run_locked(_write_field)
 
     def _card_to_data(self, col, card_id: int) -> CardData:
         card = col.get_card(card_id)

@@ -5,6 +5,31 @@ import pytest
 from src.anki.client import AnkiClient, _strip_html
 
 
+class _FakeNote:
+    """Mirrors anki's Note name-based field access (``note[name]`` / ``name in
+    note`` / ``note[name] = value`` raising KeyError on an unknown field), so
+    these tests exercise the real contract instead of mocking internals."""
+
+    def __init__(self, names: list[str], values: list[str]):
+        self._names = list(names)
+        self.fields = list(values)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._names
+
+    def _index(self, key: str) -> int:
+        try:
+            return self._names.index(key)
+        except ValueError as exc:
+            raise KeyError(key) from exc
+
+    def __getitem__(self, key: str) -> str:
+        return self.fields[self._index(key)]
+
+    def __setitem__(self, key: str, value: str) -> None:
+        self.fields[self._index(key)] = value
+
+
 def _client_with_col(col_mock: MagicMock) -> AnkiClient:
     client = AnkiClient("/dev/null")
     client._with_collection = lambda fn: fn(col_mock)  # bypass real Collection open
@@ -60,3 +85,80 @@ def test_strip_html_returns_plaintext_unchanged_without_warning(recwarn):
 def test_strip_html_parses_actual_html():
     assert _strip_html("<b>hello</b>") == "hello"
     assert _strip_html("<p>a</p><p>b</p>") == "a b"
+
+
+@pytest.mark.asyncio
+async def test_get_all_card_ids_filters_by_deck_when_given():
+    col = MagicMock()
+    col.find_cards.return_value = [10, 20]
+    client = _client_with_col(col)
+
+    ids = await client.get_all_card_ids(deck="English")
+
+    assert ids == [10, 20]
+    col.find_cards.assert_called_once_with('deck:"English"')
+
+
+@pytest.mark.asyncio
+async def test_get_all_card_ids_unfiltered_when_deck_is_none():
+    col = MagicMock()
+    col.find_cards.return_value = [1, 2, 3]
+    client = _client_with_col(col)
+
+    ids = await client.get_all_card_ids()  # default deck=None
+
+    assert ids == [1, 2, 3]
+    col.find_cards.assert_called_once_with("")
+
+
+@pytest.mark.asyncio
+async def test_get_card_field_returns_value_by_field_name():
+    note = _FakeNote(["front", "sound"], ["hello", "[sound:hi.mp3]"])
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    assert await client.get_card_field(42, "sound") == "[sound:hi.mp3]"
+    assert await client.get_card_field(42, "front") == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_card_field_returns_empty_when_field_absent():
+    note = _FakeNote(["front"], ["hello"])
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    assert await client.get_card_field(42, "sound") == ""
+
+
+@pytest.mark.asyncio
+async def test_set_card_field_writes_value_and_persists_note():
+    note = _FakeNote(["front", "sound"], ["hello", ""])
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    await client.set_card_field(42, "sound", "[sound:sensei_42.mp3]")
+
+    assert note.fields[1] == "[sound:sensei_42.mp3]"
+    col.update_note.assert_called_once_with(note)
+
+
+@pytest.mark.asyncio
+async def test_set_card_field_raises_keyerror_for_unknown_field():
+    note = _FakeNote(["front"], ["hello"])
+    card = MagicMock()
+    card.note.return_value = note
+    col = MagicMock()
+    col.get_card.return_value = card
+    client = _client_with_col(col)
+
+    with pytest.raises(KeyError, match="sound"):
+        await client.set_card_field(42, "sound", "x")

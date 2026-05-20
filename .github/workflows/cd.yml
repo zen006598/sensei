@@ -33,7 +33,10 @@ jobs:
         run: uv run ruff format --check src/ tests/
 
       - name: Security audit
-        run: uv run pip-audit
+        # PYSEC-2026-89: DoS in python-markdown (transitive via anki). No fixed
+        # release yet; sensei only parses its own trusted card content. Remove
+        # this --ignore-vuln once anki/markdown ships a fixed version.
+        run: uv run pip-audit --ignore-vuln PYSEC-2026-89
 
       - name: Tests
         run: uv run pytest -q

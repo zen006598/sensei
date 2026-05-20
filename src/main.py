@@ -17,6 +17,7 @@ from src.db.error_record import ErrorRecord  # noqa: F401 — ensure table regis
 from src.db.error_record_store import ErrorRecordStore
 from src.db.user_prefs_store import UserPrefsStore
 from src.db.user_prefs import UserPrefs  # noqa: F401 — ensure table registered
+from src.tts.generator import TTSGenerator
 from src.word_service.card_tagger import CardTagger
 from src.word_service.word_classifier import WordClassifier
 
@@ -49,6 +50,12 @@ def main() -> None:
     )
     classifier = WordClassifier(agent)
     tagger = CardTagger(anki_client, classifier)
+    generator = TTSGenerator(
+        anki=anki_client,
+        piper_model_path=settings.piper_voice_path,
+        media_dir=settings.anki_media_path,
+        voice_name=settings.piper_voice,
+    )
     state_machine = QuizStateMachine(
         anki_client,
         anki_syncer,
@@ -60,14 +67,18 @@ def main() -> None:
     )
 
     handlers = make_handlers(
-        state_machine, anki_syncer, anki_client, prefs_store, tagger
+        state_machine, anki_syncer, anki_client, prefs_store, tagger, generator
     )
     app = build_app(settings.telegram_token, settings.allowed_user_ids, handlers)
     register_jobs(
         app,
         tagger=tagger,
         syncer=anki_syncer,
-        daily_hour=settings.scheduler_daily_hour,
+        generator=generator,
+        prefs_store=prefs_store,
+        allowed_user_ids=settings.allowed_user_ids,
+        retag_hour=settings.scheduler_daily_hour,
+        tts_hour=settings.tts_daily_hour,
     )
 
     app.run_polling(allowed_updates=["message", "callback_query"])
