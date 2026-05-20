@@ -14,7 +14,7 @@ from src.bot.keyboards import (
     question_keyboard,
     session_summary_keyboard,
 )
-from src.tts.backfill import run_tts_backfill
+from src.tts.backfill import TtsBackfillResult, run_tts_backfill
 from src.tts.generator import TTSGenerator
 from src.word_service.backfill import BackfillResult, run_full_backfill
 from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
@@ -395,7 +395,7 @@ def _format_stats(result: BackfillResult) -> str:
     return "\n".join(lines)
 
 
-def _format_tts_stats(result) -> str:
+def _format_tts_stats(result: TtsBackfillResult) -> str:
     """Format TtsBackfillResult for Telegram."""
     s = result.stats
     lines = [

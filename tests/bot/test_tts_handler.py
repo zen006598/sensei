@@ -5,7 +5,6 @@ import pytest
 
 from src.bot.handlers import make_handlers
 from src.tts.generator import TtsBatchStats
-from src.word_service.card_tagger import BatchAlreadyRunningError  # noqa: F401
 
 
 def _build_handlers(generator, prefs=None, syncer=None, tagger=None):
