@@ -14,6 +14,8 @@ from src.bot.keyboards import (
     question_keyboard,
     session_summary_keyboard,
 )
+from src.tts.backfill import run_tts_backfill
+from src.tts.generator import TTSGenerator
 from src.word_service.backfill import BackfillResult, run_full_backfill
 from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 
@@ -35,6 +37,7 @@ def make_handlers(
     anki: AnkiClient,
     prefs: UserPrefsStore,
     tagger: CardTagger,
+    generator: TTSGenerator,
 ) -> dict:
     _HELP_TEXT = (
         "Commands:\n"
@@ -43,7 +46,8 @@ def make_handlers(
         "/decks — Choose which deck to study\n"
         "/mode — Choose card mode (due / new / both)\n"
         "/status — Check how many cards are due\n"
-        "/retag — Backfill missing sensei:* tags on all cards\n"
+        "/retag — Backfill missing sensei:* tags on the selected deck\n"
+        "/tts — Generate pronunciation audio for the selected deck\n"
         "/stop — End current session\n"
         "/help — Show this help message\n"
     )
@@ -290,12 +294,20 @@ def make_handlers(
                 "A retag job is already running — try again later."
             )
             return
-        await update.message.reply_text("Retag started, will notify when done.")
-        asyncio.create_task(_run_retag(update.effective_chat.id, context.bot))
+        deck = prefs.get_deck(update.effective_user.id)
+        if deck is None:
+            await update.message.reply_text(
+                "Pick a deck first via /decks before running /retag."
+            )
+            return
+        await update.message.reply_text(
+            f"Retag started on '{deck}', will notify when done."
+        )
+        asyncio.create_task(_run_retag(update.effective_chat.id, context.bot, deck))
 
-    async def _run_retag(chat_id: int, bot) -> None:
+    async def _run_retag(chat_id: int, bot, deck: str) -> None:
         try:
-            result = await run_full_backfill(tagger, syncer)
+            result = await run_full_backfill(tagger, syncer, deck=deck)
             await bot.send_message(chat_id, text=_format_stats(result))
         except BatchAlreadyRunningError:
             await bot.send_message(
@@ -304,6 +316,35 @@ def make_handlers(
         except Exception as e:
             logger.exception("retag failed")
             await bot.send_message(chat_id, text=f"Retag failed: {e}")
+
+    async def tts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if generator.is_running:
+            await update.message.reply_text(
+                "A TTS job is already running — try again later."
+            )
+            return
+        deck = prefs.get_deck(update.effective_user.id)
+        if deck is None:
+            await update.message.reply_text(
+                "Pick a deck first via /decks before running /tts."
+            )
+            return
+        await update.message.reply_text(
+            f"TTS started on '{deck}', will notify when done."
+        )
+        asyncio.create_task(_run_tts(update.effective_chat.id, context.bot, deck))
+
+    async def _run_tts(chat_id: int, bot, deck: str) -> None:
+        try:
+            result = await run_tts_backfill(generator, syncer, deck=deck)
+            await bot.send_message(chat_id, text=_format_tts_stats(result))
+        except BatchAlreadyRunningError:
+            await bot.send_message(
+                chat_id, text="A TTS job is already running — try again later."
+            )
+        except Exception as e:
+            logger.exception("tts failed")
+            await bot.send_message(chat_id, text=f"TTS failed: {e}")
 
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Unhandled exception", exc_info=context.error)
@@ -332,6 +373,7 @@ def make_handlers(
         "send_due_notification": send_due_notification,
         "error": error_handler,
         "retag": retag_command,
+        "tts": tts_command,
     }
 
 
@@ -350,6 +392,19 @@ def _format_stats(result: BackfillResult) -> str:
             f"Sync: local={'OK' if result.local_sync_ok else 'FAILED'}"
             f" register={'OK' if result.register_sync_ok else 'FAILED'}"
         )
+    return "\n".join(lines)
+
+
+def _format_tts_stats(result) -> str:
+    """Format TtsBackfillResult for Telegram."""
+    s = result.stats
+    lines = [
+        f"Done. Scanned {s.cards_scanned} card(s).",
+        f"generated={s.generated} skipped={s.skipped}"
+        f" tts_failures={s.tts_failures} write_failures={s.write_failures}.",
+    ]
+    if not result.sync_ok:
+        lines.append("Sync: FAILED")
     return "\n".join(lines)
 
 
