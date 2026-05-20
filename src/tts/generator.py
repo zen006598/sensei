@@ -18,7 +18,7 @@ from pathlib import Path
 
 from src.anki.card_data import CardData
 from src.anki.client import AnkiClient
-from src.word_service.card_tagger import BatchAlreadyRunningError  # noqa: F401  # re-exported for Task 7 generate_all
+from src.word_service.card_tagger import BatchAlreadyRunningError
 
 logger = logging.getLogger(__name__)
 
@@ -130,3 +130,34 @@ class TTSGenerator:
             return TtsResult(generated=False, skipped=False, failed=True)
 
         return TtsResult(generated=True, skipped=False, failed=False)
+
+    async def generate_all(self, deck: str) -> TtsBatchStats:
+        """Iterate every card in `deck`, ensure sound field is set.
+        Raises BatchAlreadyRunningError if another batch is in flight."""
+        if self._tts_lock.locked():
+            raise BatchAlreadyRunningError()
+        stats = TtsBatchStats()
+        async with self._tts_lock:
+            card_ids = await self._anki.get_all_card_ids(deck=deck)
+            stats.cards_scanned = len(card_ids)
+            for card_id in card_ids:
+                try:
+                    card = await self._anki.get_card(card_id)
+                    result = await self.generate(card)
+                except Exception:
+                    logger.warning(
+                        "generate_all: card %s failed before generate; continuing",
+                        card_id,
+                        exc_info=True,
+                    )
+                    stats.write_failures += 1
+                    continue
+                if result.generated:
+                    stats.generated += 1
+                if result.skipped:
+                    stats.skipped += 1
+                if result.failed:
+                    # `generate` returns failed for both synth and write
+                    # failures; lump them together as tts_failures for now.
+                    stats.tts_failures += 1
+        return stats
