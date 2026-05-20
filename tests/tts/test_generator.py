@@ -113,6 +113,30 @@ async def test_generate_reports_failure_when_media_write_raises(monkeypatch, tmp
     assert result.failure_reason == "media_write"
 
 
+@pytest.mark.asyncio
+async def test_ensure_voice_available_downloads_into_model_dir(tmp_path):
+    gen, _ = _generator()
+    gen._model_path = str(tmp_path / "voices" / "en_US-libritts-high.onnx")
+
+    with patch("piper.download_voices.download_voice") as download:
+        gen.ensure_voice_available()
+
+    download.assert_called_once_with("en_US-libritts-high", tmp_path / "voices")
+    assert (tmp_path / "voices").is_dir()  # model dir created for the download
+
+
+@pytest.mark.asyncio
+async def test_ensure_voice_available_swallows_download_failure(tmp_path):
+    gen, _ = _generator()
+    gen._model_path = str(tmp_path / "en_US-libritts-high.onnx")
+
+    with patch(
+        "piper.download_voices.download_voice",
+        side_effect=OSError("network down"),
+    ):
+        gen.ensure_voice_available()  # must not raise — best-effort at boot
+
+
 def _generator_with_cards(
     card_map: dict[int, CardData],
     sound_fields: dict[int, str] | None = None,

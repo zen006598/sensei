@@ -80,6 +80,29 @@ class TTSGenerator:
     def is_running(self) -> bool:
         return self._tts_lock.locked()
 
+    def ensure_voice_available(self) -> None:
+        """Download the Piper voice (model + config) into the model directory
+        if it isn't already there. Idempotent — piper's downloader skips files
+        that already exist and are non-empty, so this is a no-op on warm volumes.
+
+        Best-effort: a download failure is logged and swallowed rather than
+        crashing the bot at boot. The bot still serves quizzes without TTS, and
+        per-card synthesis already fails gracefully if the voice never lands."""
+        from piper.download_voices import download_voice  # type: ignore[import-untyped]
+
+        model_dir = Path(self._model_path).parent
+        try:
+            model_dir.mkdir(parents=True, exist_ok=True)
+            download_voice(self._voice_name, model_dir)
+        except Exception:
+            logger.warning(
+                "piper voice %r could not be ensured at %s; TTS stays unavailable "
+                "until the model is present",
+                self._voice_name,
+                model_dir,
+                exc_info=True,
+            )
+
     async def generate(self, card: CardData) -> TtsResult:
         """Per-card. Idempotent: skips if `sound` field is non-empty."""
         existing = (await self._anki.get_card_field(card.card_id, "sound")).strip()

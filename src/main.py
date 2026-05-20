@@ -56,6 +56,7 @@ def main() -> None:
         media_dir=settings.anki_media_path,
         voice_name=settings.piper_voice,
     )
+    generator.ensure_voice_available()
     state_machine = QuizStateMachine(
         anki_client,
         anki_syncer,
