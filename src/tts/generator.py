@@ -28,6 +28,7 @@ class TtsResult:
     generated: bool  # MP3 newly written
     skipped: bool  # sound field already non-empty
     failed: bool  # piper / media / field write failed
+    failure_reason: str | None = None  # "synth" | "media_write" | "field_write" | None
 
 
 @dataclass
@@ -99,7 +100,9 @@ class TTSGenerator:
                 card.front,
                 exc_info=True,
             )
-            return TtsResult(generated=False, skipped=False, failed=True)
+            return TtsResult(
+                generated=False, skipped=False, failed=True, failure_reason="synth"
+            )
 
         filename = f"sensei_{card.card_id}.mp3"
         media_path = self._media_dir / filename
@@ -113,7 +116,12 @@ class TTSGenerator:
                 media_path,
                 exc_info=True,
             )
-            return TtsResult(generated=False, skipped=False, failed=True)
+            return TtsResult(
+                generated=False,
+                skipped=False,
+                failed=True,
+                failure_reason="media_write",
+            )
 
         try:
             await self._anki.set_card_field(
@@ -127,7 +135,12 @@ class TTSGenerator:
                 media_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            return TtsResult(generated=False, skipped=False, failed=True)
+            return TtsResult(
+                generated=False,
+                skipped=False,
+                failed=True,
+                failure_reason="field_write",
+            )
 
         return TtsResult(generated=True, skipped=False, failed=False)
 
@@ -157,7 +170,10 @@ class TTSGenerator:
                 if result.skipped:
                     stats.skipped += 1
                 if result.failed:
-                    # `generate` returns failed for both synth and write
-                    # failures; lump them together as tts_failures for now.
-                    stats.tts_failures += 1
+                    if result.failure_reason == "synth":
+                        stats.tts_failures += 1
+                    else:
+                        # "media_write" or "field_write" — both are post-synth
+                        # write failures per the spec table.
+                        stats.write_failures += 1
         return stats

@@ -72,6 +72,7 @@ async def test_generate_reports_failure_when_synthesis_raises(tmp_path):
 
     assert result.generated is False
     assert result.failed is True
+    assert result.failure_reason == "synth"
     anki.set_card_field.assert_not_awaited()
     assert not any(tmp_path.iterdir())  # no partial files left behind
 
@@ -88,7 +89,28 @@ async def test_generate_reports_failure_when_field_write_raises(tmp_path):
         result = await gen.generate(_card())
 
     assert result.failed is True
+    assert result.failure_reason == "field_write"
     assert not any(tmp_path.iterdir()), "orphan MP3 should have been cleaned up"
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_failure_when_media_write_raises(monkeypatch, tmp_path):
+    """Disk write failure routes through 'media_write' reason."""
+    gen, _ = _generator(media_dir=str(tmp_path))
+
+    def broken_write_bytes(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("pathlib.Path.write_bytes", broken_write_bytes)
+
+    with patch(
+        "src.tts.generator._synthesize_to_mp3_bytes",
+        return_value=b"X",
+    ):
+        result = await gen.generate(_card())
+
+    assert result.failed is True
+    assert result.failure_reason == "media_write"
 
 
 def _generator_with_cards(
@@ -176,3 +198,38 @@ async def test_generate_all_raises_when_batch_already_running(tmp_path):
             await gen.generate_all(deck="English")
     finally:
         gen._tts_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_generate_all_counts_get_card_exception_as_write_failure(tmp_path):
+    """If get_card itself raises (e.g. card deleted between get_all_card_ids and
+    get_card), the failure is captured as write_failures in the outer try/except,
+    not tts_failures."""
+    cards = {1: _card(card_id=1)}
+    gen, anki = _generator_with_cards(cards, media_dir=str(tmp_path))
+    anki.get_card = AsyncMock(side_effect=RuntimeError("card vanished"))
+
+    stats = await gen.generate_all(deck="English")
+
+    assert stats.cards_scanned == 1
+    assert stats.write_failures == 1
+    assert stats.tts_failures == 0
+    assert stats.generated == 0
+
+
+@pytest.mark.asyncio
+async def test_generate_all_field_write_failure_counted_as_write_failure(tmp_path):
+    """Field-write failures inside generate() should land in write_failures
+    (not tts_failures) per the spec."""
+    cards = {1: _card(card_id=1)}
+    gen, anki = _generator_with_cards(cards, media_dir=str(tmp_path))
+    anki.set_card_field = AsyncMock(side_effect=KeyError("sound"))
+
+    with patch(
+        "src.tts.generator._synthesize_to_mp3_bytes",
+        return_value=b"X",
+    ):
+        stats = await gen.generate_all(deck="English")
+
+    assert stats.write_failures == 1
+    assert stats.tts_failures == 0
