@@ -32,6 +32,17 @@ class AnkiSyncer:
         col = Collection(self._collection_path)
         try:
             auth: SyncAuth = col.sync_login(self._email, self._password, None)
+            # TODO(tts-sync-race): sync_media=True spawns a background media-sync
+            # thread. When this same call requires FULL_DOWNLOAD/UPLOAD, the
+            # close_for_full_sync() below nulls the backend collection while that
+            # thread is mid-flight, so it panics at rslib sync.rs:249
+            # (col.as_mut().unwrap() on None). Low impact: collection sync still
+            # completes, only that session's media misses the upload (re-sent on
+            # the next normal sync), and the poisoned Collection instance is
+            # discarded on close. Fix: sync_collection(sync_media=False), then
+            # after the collection is reopened/stable call col.sync_media(auth)
+            # and poll col.media_sync_status().active until done. Needs a real
+            # full sync to verify (not unit-testable).
             out = col.sync_collection(auth, sync_media=True)
             required = out.required
             if required in (out.NO_CHANGES, out.NORMAL_SYNC):
