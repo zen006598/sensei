@@ -3,6 +3,7 @@ import io
 import logging
 import socket
 import threading
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -32,33 +33,28 @@ class AnkiSyncer:
         col = Collection(self._collection_path)
         try:
             auth: SyncAuth = col.sync_login(self._email, self._password, None)
-            # TODO(tts-sync-race): sync_media=True spawns a background media-sync
-            # thread. When this same call requires FULL_DOWNLOAD/UPLOAD, the
-            # close_for_full_sync() below nulls the backend collection while that
-            # thread is mid-flight, so it panics at rslib sync.rs:249
-            # (col.as_mut().unwrap() on None). Low impact: collection sync still
-            # completes, only that session's media misses the upload (re-sent on
-            # the next normal sync), and the poisoned Collection instance is
-            # discarded on close. Fix: sync_collection(sync_media=False), then
-            # after the collection is reopened/stable call col.sync_media(auth)
-            # and poll col.media_sync_status().active until done. Needs a real
-            # full sync to verify (not unit-testable).
-            out = col.sync_collection(auth, sync_media=True)
+            # Collection sync only. Media is synced separately below — NOT via
+            # sync_media=True here, because that runs media on a background
+            # thread that close()/close_for_full_sync() would abort mid-upload
+            # (the collection tags sync, so cards show a play button, but the
+            # MP3s never finish uploading → "file missing" on other devices,
+            # and on a full sync the aborted thread panics at rslib sync.rs:249).
+            out = col.sync_collection(auth, sync_media=False)
             required = out.required
             if required in (out.NO_CHANGES, out.NORMAL_SYNC):
-                return SyncResult(success=True, message="Sync complete")
-            if required == out.FULL_DOWNLOAD:
+                message = "Sync complete"
+            elif required == out.FULL_DOWNLOAD:
                 new_endpoint = _extract_new_endpoint(out)
                 col.close_for_full_sync()
                 _full_download_via_proxy(col, auth, new_endpoint)
                 col.reopen(after_full_sync=True)
-                return SyncResult(success=True, message="Full download complete")
-            if required == out.FULL_UPLOAD:
+                message = "Full download complete"
+            elif required == out.FULL_UPLOAD:
                 col.close_for_full_sync()
                 col.full_upload_or_download(auth=auth, server_usn=None, upload=True)
                 col.reopen(after_full_sync=True)
-                return SyncResult(success=True, message="Full upload complete")
-            if required == out.FULL_SYNC:
+                message = "Full upload complete"
+            elif required == out.FULL_SYNC:
                 return SyncResult(
                     success=False,
                     message=(
@@ -66,9 +62,14 @@ class AnkiSyncer:
                         "the conflict, or choose upload/download manually."
                     ),
                 )
-            return SyncResult(
-                success=True, message=f"Sync complete (required={required})"
-            )
+            else:
+                message = f"Sync complete (required={required})"
+
+            # The collection is now consistent and open; sync media and block
+            # until it finishes so the upload completes before the finally's
+            # close() (sync_media runs on a background thread).
+            self._sync_media_blocking(col, auth)
+            return SyncResult(success=True, message=message)
         except Exception as e:
             return SyncResult(success=False, message=str(e))
         finally:
@@ -76,6 +77,28 @@ class AnkiSyncer:
                 col.close()
             except Exception:
                 pass
+
+    @staticmethod
+    def _sync_media_blocking(
+        col: Collection, auth: SyncAuth, timeout: float = 600.0
+    ) -> None:
+        """Start a media sync and wait for the background thread to finish (or
+        time out). Aborts cleanly on timeout so the caller's close() never cuts
+        an in-flight upload."""
+        # Reconcile the media folder against the media DB first. Files written
+        # straight into collection.media (e.g. early TTS output the backend
+        # never registered) are otherwise invisible to sync; check() registers
+        # them so they get uploaded. Idempotent and cheap for our collection.
+        col.media.check()
+        col.sync_media(auth)
+        deadline = time.monotonic() + timeout
+        time.sleep(0.5)  # let the background thread flip status to active
+        while time.monotonic() < deadline:
+            if not col.media_sync_status().active:
+                return
+            time.sleep(1.0)
+        logger.warning("media sync did not finish within %ss; aborting", timeout)
+        col.abort_media_sync()
 
     async def async_sync(self) -> SyncResult:
         async with collection_lock:
