@@ -33,7 +33,10 @@ services:
     volumes:
       - anki_data:/data/anki
       - sensei_db:/data/db
-      - piper_models:/data/piper:ro
+      # rw: the bot itself populates this volume at startup via
+      # TTSGenerator.ensure_voice_available() (piper's downloader). Was :ro
+      # back when an external script was the only writer.
+      - piper_models:/data/piper
 
 volumes:
   anki_data:
