@@ -74,7 +74,11 @@ def main() -> None:
         app,
         tagger=tagger,
         syncer=anki_syncer,
-        daily_hour=settings.scheduler_daily_hour,
+        generator=generator,
+        prefs_store=prefs_store,
+        allowed_user_ids=settings.allowed_user_ids,
+        retag_hour=settings.scheduler_daily_hour,
+        tts_hour=settings.tts_daily_hour,
     )
 
     app.run_polling(allowed_updates=["message", "callback_query"])

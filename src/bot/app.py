@@ -13,6 +13,9 @@ from telegram.ext import (
 )
 
 from src.anki.sync import AnkiSyncer
+from src.db.user_prefs_store import UserPrefsStore
+from src.tts.backfill import run_tts_backfill
+from src.tts.generator import TTSGenerator
 from src.word_service.backfill import run_full_backfill
 from src.word_service.card_tagger import BatchAlreadyRunningError, CardTagger
 
@@ -27,7 +30,8 @@ _BOT_COMMANDS = [
     BotCommand("mode", "Choose card mode"),
     BotCommand("status", "Check due count"),
     BotCommand("stop", "End current session"),
-    BotCommand("retag", "Backfill missing sensei:* tags on all cards"),
+    BotCommand("retag", "Backfill missing sensei:* tags on selected deck"),
+    BotCommand("tts", "Generate pronunciation audio for selected deck"),
     BotCommand("help", "Show this help message"),
 ]
 
@@ -63,6 +67,7 @@ def build_app(token: str, allowed_user_ids: set[int], handlers: dict) -> Applica
     app.add_handler(CommandHandler("stop", handlers["stop"], filters=user_filter))
     app.add_handler(CommandHandler("status", handlers["status"], filters=user_filter))
     app.add_handler(CommandHandler("retag", handlers["retag"], filters=user_filter))
+    app.add_handler(CommandHandler("tts", handlers["tts"], filters=user_filter))
     app.add_handler(
         CommandHandler("sync", handlers["sync_command"], filters=user_filter)
     )
@@ -92,19 +97,50 @@ def register_jobs(
     *,
     tagger: CardTagger,
     syncer: AnkiSyncer,
-    daily_hour: int,
+    generator: TTSGenerator,
+    prefs_store: UserPrefsStore,
+    allowed_user_ids: set[int],
+    retag_hour: int,
+    tts_hour: int,
 ) -> None:
     """Register PTB JobQueue jobs. Called by main.py after build_app."""
 
+    def _resolve_daily_deck() -> str | None:
+        """Single-user bot: pull deck from the first allowed user."""
+        if not allowed_user_ids:
+            return None
+        user_id = next(iter(allowed_user_ids))
+        return prefs_store.get_deck(user_id)
+
     async def _daily_retag(context: ContextTypes.DEFAULT_TYPE) -> None:
+        deck = _resolve_daily_deck()
+        if deck is None:
+            logging.warning("daily retag skipped: no deck selected")
+            return
         try:
-            result = await run_full_backfill(tagger, syncer)
-            logging.info("daily retag done: %s", result)
+            result = await run_full_backfill(tagger, syncer, deck=deck)
+            logging.info("daily retag done on '%s': %s", deck, result)
         except BatchAlreadyRunningError:
             logging.warning("daily retag skipped: another batch already running")
 
+    async def _daily_tts(context: ContextTypes.DEFAULT_TYPE) -> None:
+        deck = _resolve_daily_deck()
+        if deck is None:
+            logging.warning("daily tts skipped: no deck selected")
+            return
+        try:
+            result = await run_tts_backfill(generator, syncer, deck=deck)
+            logging.info("daily tts done on '%s': %s", deck, result)
+        except BatchAlreadyRunningError:
+            logging.warning("daily tts skipped: another batch already running")
+
     app.job_queue.run_daily(
         _daily_retag,
-        time=time(hour=daily_hour, tzinfo=_LOCAL_TZ),
+        time=time(hour=retag_hour, tzinfo=_LOCAL_TZ),
         name="daily_retag",
+    )
+    app.job_queue.run_daily(
+        _daily_tts,
+        time=time(hour=tts_hour, tzinfo=_LOCAL_TZ),
+        name="daily_tts",
     )
